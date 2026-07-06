@@ -8,6 +8,7 @@ Licensed under the Apache License, version 2.0. See LICENSE for details.
 from __future__ import annotations
 
 import logging
+import pathlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -19,9 +20,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _resolve_data_pattern(
-    file_name_regex: str | None, extension_regex: str | None
-) -> str:
+def _resolve_data_pattern(file_name_regex: str | None, extension_regex: str | None) -> str:
     """Validate the name/extension patterns and build the glob pattern."""
     if file_name_regex is None:
         file_name_regex = "**"
@@ -108,9 +107,7 @@ def find_files(
     depth, folder_levels = _resolve_folder_levels(folder_levels)
 
     matching_files = root.glob(data_pattern)
-    matching_files_structure, non_matching_files_structure = _classify_files(
-        matching_files, root, depth
-    )
+    matching_files_structure, non_matching_files_structure = _classify_files(matching_files, root, depth)
 
     files = pd.DataFrame(matching_files_structure, columns=folder_levels)
     if verbose and non_matching_files_structure:
@@ -163,8 +160,7 @@ def find_folders(
     matching_dirs = [
         p
         for p in root.glob(pattern)
-        if p.is_dir()
-        and not any(part.startswith(".") for part in p.relative_to(root).parts)
+        if p.is_dir() and not any(part.startswith(".") for part in p.relative_to(root).parts)
     ]
 
     matching_path_structure = []
@@ -191,7 +187,58 @@ MAX_DEPTH = 2
 
 
 def filepaths_dict(paths: list) -> dict:
-    """Convert a list of file paths into a nested dictionary structure."""
+    """Convert a list of file paths into a nested dictionary structure.
+
+    Args:
+        d (dict): The dictionary to populate with the file paths.
+        paths (list): list of file paths
+
+    Functioning:
+    each path in paths is split into its components (root, subfolder, and file name).
+    The function then recursively builds a nested dictionary where each key represents a folder
+    and the values are nested dictionaries for the subfolders.
+    The most inner dictionary has the filename as the key and the full filepath as the value.
+    If a folder has multiple files, they are stored in a list under the same key.
+
+    At each recursive iteration, the current dictionary item (with key corresponding to the current folder level)
+    is updated with the remaining path components (subfolders, if any, and filename).
+    Subsequent iterations continue splitting the remaining path components and creating subdictionaries, until the last
+    component (the filename) is reached, at which point it is added to the list of files for that folder.
+    """
+
+    def _inner_iter(d: dict | list, path: list, full_path: pathlib.Path) -> dict | list:
+        if len(path) == 1:  # initialize the current folder with an empty list if it doesn't exist yet
+            if isinstance(d, list):
+                d.append(full_path)
+            else:
+                d = [full_path]
+            # if there are more than 2 levels, we recursively create the inner nesting:
+            # the _inner_iter function receives the current subfolder dictionary,
+            # and the remaining path components (subfolder and file name) to continue building the nested structure.
+            # d[path[0]] = _inner_iter(d.get(path[0], {}), path[1:], full_path)
+        else:
+            if not isinstance(d, dict):
+                d = {}
+            d[path[0]] = _inner_iter(d.get(path[0], []), path[1:], full_path)
+            # we have reached the last level of nesting, we add the file name to the list of files
+            # for the current subfolder. If the subfolder already exists in the dictionary, we append the file name
+            # to its list; otherwise, we create a new list with the file name.
+            # d.setdefault(path[0], []).append(original_path)  # was: d[paths[0]] = paths[1]
+        return d
+
+    path_dict = {}
+    for path in paths:
+        # run the iterative function for each path in the path list. The initial passed elements are an the path_dict
+        # built so far, and the current path split into its components (root folder and everything else).
+        # The function will update the path_dict with the new path structure.
+        path_dict[path[0]] = _inner_iter(path_dict.get(path[0], {}), path[1:], pathlib.Path(*path))
+
+    return path_dict
+
+
+"""
+def filepaths_dict(paths: list) -> dict:
+    Convert a list of file paths into a nested dictionary structure.
 
     def _inner_iter(d: dict, paths: list) -> dict:
         if len(paths) == 1:
@@ -207,3 +254,4 @@ def filepaths_dict(paths: list) -> dict:
         path_dict[path[0]] = _inner_iter(path_dict.get(path[0], {}), path[1:])
 
     return path_dict
+"""

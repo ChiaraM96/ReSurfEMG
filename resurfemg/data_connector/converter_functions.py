@@ -268,8 +268,10 @@ def load_adicht(
 
 
 def _load_by_extension(
-    file_path: str, file_ext: str, file_extension: str, verbose: bool, kwargs: dict
+    file_path: str, file_ext: str, verbose: bool = False, kwargs: dict | None = None
 ) -> tuple[pd.DataFrame, dict]:
+    if kwargs is None:
+        kwargs = {"record_idx": 0, "channel_idxs": None, "resample_channels": None}
     loaders = {
         "poly5": load_poly5,
         "mat": lambda fp, v: load_mat(fp, kwargs.get("key_name", ""), v),
@@ -286,7 +288,7 @@ def _load_by_extension(
             resample_channels=kwargs.get("resample_channels"),
             verbose=verbose,
         )
-    msg = f"No methods available for file extension {file_extension}."
+    msg = f"No methods available for file extension {file_ext}."
     raise UserWarning(msg)
 
 
@@ -354,12 +356,12 @@ def load_file(file_path: str, verbose: bool = True, **kwargs) -> tuple[np.ndarra
         msg = "file_path should be a str."
         raise TypeError(msg)
     file_name = Path(file_path).name
-    file_extension = file_name.split(".")[-1]
+    file_extension = kwargs.get("extension", file_name.split(".")[-1])
     file_ext = file_extension.lower()
     if verbose:
         logger.info("Detected .%s", file_ext)
 
-    data_df, metadata = _load_by_extension(file_path, file_ext, file_extension, verbose, kwargs)
+    data_df, metadata = _load_by_extension(file_path, file_ext, verbose, kwargs)
     metadata["file_name"] = file_name
     metadata["file_dir"] = Path(file_path).parent
     metadata["file_extension"] = file_extension

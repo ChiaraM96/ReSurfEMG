@@ -222,12 +222,8 @@ class Poly5Reader:
         magic_number = str(header_data[0])
         version_number = header_data[1]
         self.sample_rate: int = header_data[3]
-        # """self.storage_rate=header_data[4]
         self.num_channels: int = header_data[6] // 2
         self.num_samples: int = header_data[7]
-        # """self.start_time = datetime.datetime(header_data[8], header_data[9],
-        #                                     header_data[10], header_data[12],""""
-        #                                     header_data[13], header_data[14])""""
         self.num_data_blocks: int = header_data[15]
         self.num_samples_per_block: int = header_data[16]
         if magic_number != "b'POLY SAMPLE FILEversion 2.03\\r\\n\\x1a'":

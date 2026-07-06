@@ -42,7 +42,15 @@ def simulate_raw_emg(t_end: int, fs_emg: int, emg_amp: float = 5, rr: float = 22
         "heart_rate": 80,
         "ecg_acceleration": 1.5,
         "ecg_amplitude": 200,
+        "powerline_amp": 0,  # 0 -> no mains interference (back-compat default)
+        "powerline_freq": 50,
+        "powerline_n_harmonics": 8,
+        "powerline_harmonic_decay": 0.7,
+        "powerline_freq_drift": 0.1,
+        "phase_jitter": 3.0,
+        "harmonic_jitter": 0.6,
     }
+
     for key, value in kwargs.items():
         if key in sim_parameters:
             sim_parameters[key] = value
@@ -63,12 +71,22 @@ def simulate_raw_emg(t_end: int, fs_emg: int, emg_amp: float = 5, rr: float = 22
         tau_mus_up=sim_parameters["tau_mus_up"],
         tau_mus_down=sim_parameters["tau_mus_down"],
     )
+    powerline_kwargs = {
+        "f0": sim_parameters["powerline_freq"],
+        "n_harmonics": sim_parameters["powerline_n_harmonics"],
+        "harmonic_decay": sim_parameters["powerline_harmonic_decay"],
+        "freq_drift": sim_parameters["powerline_freq_drift"],
+        "phase_jitter": sim_parameters["phase_jitter"],
+        "harmonic_jitter": sim_parameters["harmonic_jitter"],
+    }
     emg_sim = synth.simulate_emg(
         muscle_activation=muscle_activation,
         fs_emg=fs_emg,
         emg_amp=emg_amp,
         drift_amp=sim_parameters["drift_amp"],
         noise_amp=sim_parameters["noise_amp"],
+        powerline_amp=sim_parameters["powerline_amp"],
+        powerline_kwargs=powerline_kwargs,
     )
     sim_hr = sim_parameters["heart_rate"] / sim_parameters["ecg_acceleration"]
     fs_ecg = int(fs_emg * sim_parameters["ecg_acceleration"])

@@ -4,6 +4,8 @@ Copyright 2022 Netherlands eScience Center and University of Twente
 Licensed under the Apache License, version 2.0. See LICENSE for details.
 """
 
+from typing import cast
+
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy.fft import fft, fftfreq
@@ -88,7 +90,7 @@ def show_psd_welch(
         msg = "Sample array must be 1-dimensional"
         raise ValueError(msg)
     window = np.hanning(t_window_s)
-    f, pxx_den = welch(signal, fs_emg, window=window, nperseg=t_window_s)
+    f, pxx_den = welch(signal, fs_emg, window=cast("str", window), nperseg=t_window_s)
     psd_label = f"PSD [{signal_unit}**2/Hz]"
 
     if axis_spec == 1:

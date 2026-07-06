@@ -24,10 +24,9 @@ from IPython.display import display
 from ipywidgets import Button, Checkbox, Dropdown, HBox, Text, VBox
 from scipy import io as sio
 
-from resurfemg.data_connector.adicht_reader import AdichtReader
+from resurfemg.data_connector.converter_functions import load_file
 from resurfemg.data_connector.data_classes import EmgDataGroup, TimeSeriesGroup, VentilatorDataGroup
 from resurfemg.data_connector.file_discovery import filepaths_dict, find_files
-from resurfemg.data_connector.tmsisdk_lite import Poly5Reader
 
 logger = logging.getLogger(__name__)
 
@@ -163,11 +162,11 @@ class CheckBoxTree(anywidget.AnyWidget):
             summary.appendChild(Object.assign(document.createElement('span'), { textContent: ' ' + key }));
             details.appendChild(summary);
             for (const [fname, dtype] of Object.entries(data)) {
-                details.appendChild(buildFileRow(fname, dtype, branchPath + '/' + fname, isFirst));
+                details.appendChild(buildFileRow(fname, dtype, fname, isFirst));
+
             }
             return details;
         }
-
         function buildTree(data, pathParts) {
             const container = document.createElement('div');
             for (const [key, value] of Object.entries(data)) {
@@ -175,7 +174,7 @@ class CheckBoxTree(anywidget.AnyWidget):
                 if (typeof value === 'string') {
                     const branch = pathParts.join('/');
                     if (firstBranchPath === null) firstBranchPath = branch;
-                    container.appendChild(buildFileRow(key, value, currentPath.join('/'), firstBranchPath === branch));
+                    container.appendChild(buildFileRow(key, value, key, firstBranchPath === branch));
                 } else if (isLeafParent(value)) {
                     const branchPath = currentPath.join('/');
                     if (firstBranchPath === null) firstBranchPath = branchPath;
@@ -256,7 +255,7 @@ class PatientSelector:
 
     data_groups: ClassVar[dict[str, tuple[str, ...]]] = {
         "EMG": ("emg", "exg"),
-        "Ventilator": ("vent", "flow", "pressure", "rip", "draeger"),
+        "Ventilator": ("vent", "flow", "pressure", "rip", "draeger", "paw"),
         "Other": (),
         "Both": ("all", "both"),
     }
@@ -275,12 +274,17 @@ class PatientSelector:
         "Both": (),
     }
 
-    supported_extensions: ClassVar[tuple[str, ...]] = (".Poly5", ".adicht", ".mat")
+    supported_extensions: ClassVar[tuple[str, ...]] = (".Poly5", ".adicht", ".mat", ".npy", ".csv")
 
-    def __init__(self, root_directory: str | Path | None = None, patient_regex: str = r"^([Pp]_?\d+)"):
+    def __init__(
+        self,
+        root_directory: str | Path | None = None,
+        patient_regex: str = r"^([Pp]_?\d+)",
+        session_regex: str = r"^([Ss]_?\d+)",
+    ) -> None:
         self.root_directory = root_directory if root_directory is not None else Path.cwd()
         self._trees: dict[str, CheckBoxTree] = {}
-        self._complete_regex(patient_regex)
+        self._complete_regex(patient_regex, session_regex)
         self._compiled_name_types = {
             category: re.compile("|".join(patterns), re.IGNORECASE) for category, patterns in self.data_groups.items()
         }
@@ -289,19 +293,39 @@ class PatientSelector:
         self.data_vent: VentilatorDataGroup
         self.data_other: TimeSeriesGroup
 
-    def _complete_regex(self, regex: str) -> None:
+    def _complete_regex(self, patient_regex: str, session_regex: str = "") -> None:
         """Complete the regex pattern to match the supported file extensions.
 
         Args:
-            regex (str): The regex pattern to complete.
+            patient_regex (str): The regex pattern for matching patient IDs.
+            session_regex (str): The regex pattern for matching session IDs.
         """
-        self.patient_regex = (
-            "("
-            + regex
-            + r")[/\\](?:.+[/\\])?[^/\\]+\.(?:"
+
+        def tag_regex(_regex: str, tag: str) -> str:
+            """Wrap regex in a named group, preserving inner capture groups.
+
+            If the regex contains capture groups, the outermost group is tagged as
+            <patient>. Otherwise, the whole regex is wrapped in a named group.
+            """
+            has_capture_group = bool(re.search(r"(?<!\\)\((?!\?)", _regex))
+            if has_capture_group:
+                # Replace the first unescaped capturing group opening with named group
+                return re.sub(r"(?<!\\)\((?!\?)", f"(?P<{tag}>", _regex, count=1)
+            return f"(?P<{tag}>{_regex})"
+
+        patient_regex = tag_regex(patient_regex, "patient")
+        session_regex = tag_regex(session_regex, "session") if session_regex else ""
+        self.full_filename_regex = re.compile(
+            r"(?i)(?=.*("
+            + patient_regex
+            + r"))(?=.*("
+            + session_regex
+            + r")).*\.(?P<extension>"
             + "|".join(ext.lstrip(".") for ext in self.supported_extensions)
             + ")$"
         )
+        self.patient_regex = re.compile(patient_regex)
+        self.session_regex = re.compile(session_regex)
 
     def _dropdown_changed(self, _dropdown: widgets.Dropdown) -> None:
         """Update the file selection checkboxes when the patient selection dropdown changes.
@@ -326,9 +350,9 @@ class PatientSelector:
         for k, v in node.items():
             if isinstance(v, list):
                 if not v:
-                    result[k] = self._guess_data_type(k)
+                    result[k] = self._guess_data_type(k)[0]
                 else:
-                    result[k] = {f: self._guess_data_type(f) for f in v}
+                    result[k] = {f: self._guess_data_type(f)[0] for f in v}
             else:
                 result[k] = self._build_tree_data(v)
         return result
@@ -342,16 +366,39 @@ class PatientSelector:
         self.selected_files = _tree.checked_files
         self.selected_types = [_tree.file_types[t] for t in _tree.checked_files]
 
+    def _explore_file_structure(self) -> list[str]:
+
+        self.files = find_files(self.root_directory)
+        _has_subdirs = any(p.is_dir() for p in Path(self.root_directory).iterdir())
+        if _has_subdirs:
+            col = self.files["files"]
+            col = [Path(c).parts for c in col if re.search(self.full_filename_regex, c)]
+            self.patient_dict = filepaths_dict(col)
+        else:
+            patient_dict = {}
+            # 1. split into file types
+            for _file in self.files["files"]:
+                _id = None
+                _type, _id, _session, _extension = self._guess_data_type(_file)
+                if _id is not None:
+                    if _id not in patient_dict:
+                        patient_dict[_id] = {}
+                    if _session not in patient_dict[_id]:
+                        patient_dict[_id][_session] = []
+                    patient_dict[_id][_session].append(Path(self.root_directory).joinpath(_file))
+                    # """" if _type not in patient_dict[_id][_session]:
+                    #     patient_dict[_id][_session][_type] = []""""
+                    # patient_dict[_id][_session][_type].append(Path(self.root_directory).joinpath(_file))""""
+            self.patient_dict = patient_dict
+            # 2. split into patients
+            # 3. sort by alphabetical order (as_idsumption: the files are named in a way
+            # that the alphabetical order corresponds to the chronological order)
+        return list(self.patient_dict.keys())
+
     def _create_widget(self) -> None:
         """Build the patient dropdown, per-patient CheckBoxTree stack, and import button."""
-        self.files = find_files(self.root_directory)
-        col = self.files["files"]
-        col = [Path(c).parts for c in col if re.search(self.patient_regex, c)]
-        self.patient_dict = filepaths_dict(col)
-        ids = list(self.patient_dict.keys())
-
+        ids = self._explore_file_structure()
         self.patient_selector = widgets.Dropdown(options=ids)
-
         self._trees = {_id: CheckBoxTree(tree_data=self._build_tree_data(self.patient_dict[_id])) for _id in ids}
 
         self.file_selector = widgets.Stack(
@@ -379,13 +426,21 @@ class PatientSelector:
         _id = str(self.selected_id)
         _selected = {_id: dict(zip(self.selected_files, self.selected_types, strict=False))}
         for _file, _type in list(_selected[_id].items()):
-            file = str(self.root_directory / Path(_id) / Path(_file))
+            file = str(self.root_directory / Path(_file)) if self.root_directory not in _file else str(_file)
             _extension = Path(file).suffix
             logger.info(_extension)
-            if _extension in [".Poly5", ".adicht"]:
-                _data = self._get_nonmat_data(
-                    Poly5Reader(file) if _extension == ".Poly5" else AdichtReader(file), _type
-                )
+            if _extension in [".Poly5", ".adicht", ".npy", ".csv"]:
+                # """" _data = self._get_nonmat_data(
+                # """"     Poly5Reader(file)
+                #     if _extension == ".Poly5"
+                #     else AdichtReader(file)
+                #     if _extension == ".adicht"
+                #     else load_npy(file)[0]
+                #     if _extension == ".npy"
+                #     else load_csv(file, True)[0],
+                #     _type,
+                # )""""
+                _data = self._get_nonmat_data(file, _extension, _type)
                 if _type == "EMG" and isinstance(_data, EmgDataGroup):
                     self.data_emg = _data
                 elif _type == "Ventilator" and isinstance(_data, VentilatorDataGroup):
@@ -405,42 +460,49 @@ class PatientSelector:
             # .mat already has the TimeSeriesGroup objects, while the other two still need converting.
 
     def _get_nonmat_data(
-        self, data: Poly5Reader | AdichtReader, data_type: str
+        self, file_name: str, extension: str, data_type: str
     ) -> EmgDataGroup | VentilatorDataGroup | TimeSeriesGroup:
-        # Load the EMG and ventilator data recordings from the selected folders.
-        if not hasattr(data, "samples") or not hasattr(data, "sample_rate"):
-            msg = "The provided data does not contain the required attributes 'samples' and 'sample_rate'."
-            raise ValueError(msg)
-        if isinstance(data, Poly5Reader):
-            y = data.samples[: data.num_samples] if hasattr(data, "num_samples") else data.samples[:]
-            fs = data.sample_rate if hasattr(data, "sample_rate") else None
-            n_channels = y.shape[0]
-            labels = cast(
-                "list[str]",
-                (
-                    data.ch_names[:n_channels]
-                    if hasattr(data, "channel_labels")
-                    else (self.default_labels[data_type][:n_channels])
-                ),
-            )
-            units = data.ch_unit_names[:n_channels] if hasattr(data, "channel_units") else n_channels * ["uV"]
-        elif isinstance(data, AdichtReader):
-            # Extract the ventilator data
-            select_channel_idxs = [*range(3)]
-            record_idx = 0
-            resample_channels_dict = None
-            data_df, fs = data.extract_data(
-                channel_idxs=select_channel_idxs,
-                record_idx=record_idx,
-                resample_channels=resample_channels_dict,
-            )
-            # Get the labels and units of the selected channels
-            y = data_df.to_numpy().T
-            labels = data.get_labels(select_channel_idxs)
-            units = data.get_units(select_channel_idxs, record_idx)
-            # NB: The units in the example data are in mV, so overwrite them:
-            labels = ["Paw", "Flow", "Volume"]
-            units = ["cmH2O", "L/min", "mL"]
+        y, data, metadata = load_file(file_name, extension=extension)
+        fs = metadata.get("fs", None)
+        n_channels = metadata.get("n_channels", min(data.shape))
+        labels = metadata.get("labels", self.default_labels[data_type][:n_channels])
+        units = metadata.get("units", self.default_units[data_type][:n_channels])
+        # """" Load the EMG and ventilator data recordings from the selected folders.
+        # if not hasattr(metadata, "samples") or not hasattr(metadata, "sample_rate"):
+        #     msg = "The provided data does not contain the required attributes 'samples' and 'sample_rate'."""""
+        #     raise ValueError(msg)a
+        # if isinstance(data, Poly5Reader):
+        #     y = data.samples[: data.num_samples] if hasattr(data, "num_samples") else data.samples[:]""""
+        #     fs = data.sample_rate if hasattr(data, "sample_rate") else None"""
+        ###""""     n_channels = y.shape[0]
+        ###""""     labels = cast(
+        ###""""         "list[str]",
+        ###""""         (
+        ###""""             data.ch_names[:n_channels]
+        ###""""             if hasattr(data, "channel_labels")
+        ###""""             else (self.default_labels[data_type][:n_channels])
+        ###""""         ),
+        ###""""     )
+        ###""""     units = data.ch_unit_names[:n_channels] if hasattr(data, "channel_units") else n_channels * ["uV"]
+        ###"""" elif isinstance(data, AdichtReader):
+        ###""""     # Extract the ventilator data
+        ###""""     select_channel_idxs = [*range(3)]
+        ###""""     record_idx = 0
+        ###""""     resample_channels_dict = None
+        ###""""     data_df, fs = data.extract_data(
+        ###""""         channel_idxs=select_channel_idxs,
+        ###""""         record_idx=record_idx,
+        ###""""         resample_channels=resample_channels_dict,
+        ###""""     )
+        ###""""     # Get the labels and units of the selected channels
+        ###""""     y = data_df.to_numpy().T
+        ###""""     labels = data.get_labels(select_channel_idxs)
+        ###""""     units = data.get_units(select_channel_idxs, record_idx)
+        ###""""     # NB: The units in the example data are in mV, so overwrite them:
+        ###""""     labels = ["Paw", "Flow", "Volume"]
+        ###""""     units = ["cmH2O", "L/min", "mL"]
+        ###"""" elif isinstance(data, pd.DataFrame):""""
+
         if data_type == "EMG":
             return EmgDataGroup(y, fs=fs, labels=labels, units=units)
         if data_type == "Ventilator":
@@ -491,19 +553,27 @@ class PatientSelector:
 
         return widgets.HBox([_checkbox, _widget])
 
-    def _guess_data_type(self, file_name: str | Path) -> str:
+    def _guess_data_type(self, file_name: str | Path) -> tuple[str, str | None, str | None, str | None]:
         """Guess the data type of a file based on its extension.
 
         Args:
             file_name (str | Path): The name of the file.
 
         Returns:
-            str: The guessed data type ("EMG", "Ventilator", or "Other").
+            tuple[str, str | None, str | None, str | None]: The guessed data type,
+                patient ID, session ID, and extension.
         """
-        _type = next(
-            (cat for cat, pattern in self._compiled_name_types.items() if pattern.search(str(file_name))), None
-        )
-        return _type if _type is not None else "Other"
+        file_str = str(file_name)
+        for cat, pattern in self._compiled_name_types.items():
+            m = pattern.search(file_str)
+            if m:
+                m_full = self.full_filename_regex.search(file_str)
+                if m_full:
+                    patient = m_full.group("patient") if "patient" in m_full.groupdict() else None
+                    session = m_full.group("session") if "session" in m_full.groupdict() else None
+                    extension = m_full.group("extension") if "extension" in m_full.groupdict() else None
+                    return (cat, patient, session, extension)
+        return ("Other", None, None, None)
 
 
 @overload

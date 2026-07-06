@@ -58,7 +58,7 @@ def respiratory_pattern_generator(
         blocker = np.arange(int(fs * 60 / rr) + 1) / fs * rr / 60 * 2 * np.pi
         squared_wave = (signal.square(blocker, ie_fraction) + 1) / 2
         respiratory_pattern[i_occ : i_occ + int(fs * 60 / rr) + 1] = squared_wave
-    return respiratory_pattern
+    return np.asarray(respiratory_pattern)
 
 
 def simulate_muscle_dynamics(
@@ -91,6 +91,102 @@ def simulate_muscle_dynamics(
         else:
             muscle_activation[i] = pat + ((block_pattern[i - 1] - pat) / (tau_mus_down * fs))
     return muscle_activation
+
+
+def simulate_powerline_noise(
+    n_samp: int,
+    fs_emg: int = 2048,
+    f0: float = 50,
+    n_harmonics: int = 11,
+    powerline_amp: float = 5,
+    harmonic_decay: float = 0.9,
+    freq_drift: float = 0.1,
+    **kwargs,
+) -> np.ndarray:
+    """Simulate mains (powerline) interference with harmonics.
+
+    This function simulates 50/60 Hz powerline interference and its harmonics
+    for remixing into a synthetic EMG. Harmonics span up to (but not past) the
+    Nyquist frequency, with an irregular per-harmonic amplitude profile that
+    reproduces the jagged harmonic peaks seen in real recordings.
+
+    Args:
+        n_samp (int): Number of samples to generate.
+        fs_emg (int): EMG sampling rate.
+        f0 (float): Fundamental line frequency (50 in EU, 60 in US).
+        n_harmonics (int): Number of components including the fundamental.
+            Clamped so no harmonic exceeds the Nyquist frequency.
+        powerline_amp (float): Peak amplitude of the fundamental (uV).
+        harmonic_decay (float): Baseline relative amplitude of successive
+            harmonics; harmonic k gets `harmonic_decay ** (k - 1)`. Close to 1
+            keeps high harmonics strong (as in the reference spectrum).
+        freq_drift (float): Std (Hz) of a slow, bounded wander of the line
+            frequency. 0 keeps it fixed at f0.
+        **kwargs: Optional arguments — harmonic_jitter (log-spread of the
+            per-harmonic amplitudes, 0 -> smooth geometric decay),
+            harmonic_amplitudes (explicit relative amplitudes, overrides decay
+            and jitter), amp_modulation, mod_freq, phase_jitter.
+
+    Returns:
+        np.array[float]: The synthetic powerline interference.
+
+    Raises:
+        UserWarning: If a kwarg is not an available setting.
+    """
+    settings = {
+        "harmonic_jitter": 0.6,
+        "harmonic_amplitudes": None,
+        "amp_modulation": 0.0,
+        "mod_freq": 0.3,
+        "phase_jitter": 0.0,
+    }
+    for key, value in kwargs.items():
+        if key in settings:
+            settings[key] = value
+        else:
+            msg = f"kwarg `{key}` not available."
+            raise UserWarning(msg)
+
+    # Never place a harmonic above Nyquist (it would alias to a false peak)
+    n_harmonics = min(n_harmonics, int((fs_emg / 2) / f0))
+
+    t = np.arange(n_samp) / fs_emg
+
+    # Slowly wandering fundamental frequency -> instantaneous phase
+    if freq_drift > 0:
+        dev = np.zeros(n_samp)
+        for f_wander in (0.05, 0.13, 0.27):  # sub-Hz -> smooth, bounded drift
+            dev += np.sin(2 * np.pi * f_wander * t + rng.uniform(0, 2 * np.pi))
+        dev *= freq_drift / (dev.std() + 1e-12)
+        f_inst = f0 + dev
+    else:
+        f_inst = np.full(n_samp, f0)
+    phase = 2 * np.pi * np.cumsum(f_inst) / fs_emg
+
+    # Harmonic amplitude profile
+    if settings["harmonic_amplitudes"] is not None:
+        amps = np.asarray(settings["harmonic_amplitudes"], dtype=float)
+        n_harmonics = amps.size
+    else:
+        amps = harmonic_decay ** np.arange(n_harmonics)
+        # irregular profile: real mains harmonics are not monotonic
+        if settings["harmonic_jitter"] > 0:
+            jit = settings["harmonic_jitter"]
+            amps *= np.exp(rng.uniform(-jit, jit, n_harmonics))
+
+    # Sum fundamental + harmonics
+    powerline = np.zeros(n_samp)
+    phase_jitter = settings["phase_jitter"]
+    for k in range(1, n_harmonics + 1):
+        phi = rng.normal(0, phase_jitter) if phase_jitter > 0 else 0.0
+        powerline += amps[k - 1] * np.sin(k * phase + phi)
+
+    if settings["amp_modulation"] > 0:
+        powerline *= 1 + settings["amp_modulation"] * np.sin(
+            2 * np.pi * settings["mod_freq"] * t + rng.uniform(0, 2 * np.pi)
+        )
+
+    return powerline_amp * powerline
 
 
 def _evaluate_ventilator_status(
@@ -230,12 +326,14 @@ def simulate_emg(
     emg_amp: float = 5,
     drift_amp: float = 100,
     noise_amp: float = 2,
+    powerline_amp: float = 0,
+    powerline_kwargs: dict | None = None,
 ) -> np.ndarray:
     """Simulate a surface respiratory EMG.
 
     This function simulates a surface respiratory EMG based on the provided
-    `muscle_activation` and adds noise and drift to the signal. No ecg
-    component is included, but can be added later.
+    `muscle_activation` and adds noise, drift, and powerline interference to
+    the signal. No ecg component is included, but can be added later.
 
     Args:
         muscle_activation (np.array[float]): The muscle activation pattern.
@@ -243,6 +341,9 @@ def simulate_emg(
         emg_amp (float): Approximate EMG-RMS amplitude (uV).
         drift_amp (float): Approximate drift RMS amplitude (uV).
         noise_amp (float): Approximate baseline noise RMS amplitude (uV).
+        powerline_amp (float): Peak amplitude of the powerline fundamental
+            (uV). 0 disables mains interference.
+        powerline_kwargs (dict | None): Additional keyword arguments for the powerline noise simulation.
 
     Returns:
         np.array[float]: The raw synthetic EMG without the ECG added.
@@ -260,5 +361,15 @@ def simulate_emg(
     part_drift_tmp = filt.emg_lowpass_butter(white_noise, f_high, fs_emg, order=3)
     part_drift = part_drift_tmp[int(1 / f_high) * fs_emg :] / f_high
 
+    # make powerline interference component
+    part_powerline = np.zeros((n_samp,))
+    if powerline_amp > 0:
+        part_powerline = simulate_powerline_noise(
+            n_samp,
+            fs_emg=fs_emg,
+            powerline_amp=powerline_amp,
+            **(powerline_kwargs or {}),
+        )
+
     # mix channels, could be remixed with an ecg
-    return emg_amp * part_emg + part_drift + part_noise
+    return emg_amp * part_emg + part_drift + part_noise + part_powerline
