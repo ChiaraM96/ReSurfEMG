@@ -86,3 +86,6 @@ synth_data/*.npy
 not_pushed
 conda-pkg/meta.yaml
 config.json
+
+# profiling data
+*.prof
