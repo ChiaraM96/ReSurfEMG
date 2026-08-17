@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import logging
 import platform
+import re
 import warnings
 from pathlib import Path
-from typing import cast
+from typing import TypedDict, cast
 
 import numpy as np
 import pandas as pd
@@ -54,16 +55,18 @@ def load_poly5(file_path: str, verbose: bool = True) -> tuple[pd.DataFrame, dict
     loaded_data = poly5_data.samples[:, :n_samples]
     metadata = {}
     metadata["fs"] = poly5_data.sample_rate
-    metadata["labels"] = poly5_data.ch_names
-    metadata["units"] = poly5_data.ch_unit_names
-    data_df = pd.DataFrame(loaded_data.T, columns=metadata["labels"])
+    metadata["labels"] = list(poly5_data.ch_names)
+    metadata["units"] = list(poly5_data.ch_unit_names)
+    data_df = pd.DataFrame(np.asarray(loaded_data.T), columns=metadata["labels"])
     if verbose:
         logger.info("Loading data completed")
 
     return data_df, metadata
 
 
-def load_mat(file_path: str, key_name: str | None = None, verbose: bool = True) -> tuple[pd.DataFrame, dict]:
+def load_mat(
+    file_path: str, key_name: str | None = None, verbose: bool = True
+) -> tuple[pd.DataFrame, dict]:
     """Load a .mat file and return the data as a pandas DataFrame.
 
     This function loads a .mat file and returns the data as a pandas
@@ -103,7 +106,9 @@ def load_mat(file_path: str, key_name: str | None = None, verbose: bool = True) 
     return data_df, {}
 
 
-def load_csv(file_path: str, force_col_reading: bool, verbose: bool = True) -> tuple[pd.DataFrame, dict]:
+def load_csv(
+    file_path: str, force_col_reading: bool, verbose: bool = True
+) -> tuple[pd.DataFrame, dict]:
     """Load a .csv file and return the data as a pandas DataFrame.
 
     This function loads a .csv file and returns the data as a pandas
@@ -127,7 +132,7 @@ def load_csv(file_path: str, force_col_reading: bool, verbose: bool = True) -> t
 
     def has_header(file_path: str, nrows: int = 20) -> bool:
         df = pd.read_csv(file_path, header=None, nrows=nrows)
-        df_header = pd.read_csv(file_path, nrows=nrows)
+        df_header = pd.read_csv(filepath_or_buffer=file_path, nrows=nrows)
         return tuple(df.dtypes) != tuple(df_header.dtypes)
 
     def chech_row_wise(file_path: str, nrows: int = 20) -> bool:
@@ -290,7 +295,9 @@ def _load_by_extension(
     raise UserWarning(msg)
 
 
-def _rename_channels(data_df: pd.DataFrame, kwargs: dict, verbose: bool) -> pd.DataFrame:
+def _rename_channels(
+    data_df: pd.DataFrame, kwargs: dict, verbose: bool
+) -> pd.DataFrame:
     labels = kwargs.get("labels")
     if isinstance(labels, list) and len(labels) == data_df.shape[1]:
         if not all(isinstance(channel, str) for channel in labels):
@@ -300,14 +307,20 @@ def _rename_channels(data_df: pd.DataFrame, kwargs: dict, verbose: bool) -> pd.D
             msg = "Channel names should be unique"
             raise UserWarning(msg)
         if verbose:
-            logger.info("Renamed channels: %s", list(zip(data_df.columns, labels, strict=False)))
+            logger.info(
+                "Renamed channels: %s", list(zip(data_df.columns, labels, strict=False))
+            )
         data_df.columns = labels
     return data_df
 
 
-def _select_channels(data_df: pd.DataFrame, metadata: dict, kwargs: dict, verbose: bool) -> pd.DataFrame:
+def _select_channels(
+    data_df: pd.DataFrame, metadata: dict, kwargs: dict, verbose: bool
+) -> pd.DataFrame:
     channel_idxs = kwargs.get("channel_idxs", list(range(data_df.shape[1])))
-    if not all(isinstance(idx, int) and 0 <= idx < data_df.shape[1] for idx in channel_idxs):
+    if not all(
+        isinstance(idx, int) and 0 <= idx < data_df.shape[1] for idx in channel_idxs
+    ):
         msg = "channel_idxs should be a list of ints"
         raise TypeError(msg)
     data_df = cast("pd.DataFrame", data_df.iloc[:, channel_idxs])
@@ -320,7 +333,9 @@ def _select_channels(data_df: pd.DataFrame, metadata: dict, kwargs: dict, verbos
     return data_df
 
 
-def load_file(file_path: str, verbose: bool = True, **kwargs) -> tuple[np.ndarray, pd.DataFrame, dict]:
+def load_file(
+    file_path: str, verbose: bool = True, **kwargs: dict
+) -> tuple[np.ndarray, pd.DataFrame, dict]:
     """Load a file as numpy array.
 
     This function loads a file from a given path and returns the data as a
@@ -359,7 +374,9 @@ def load_file(file_path: str, verbose: bool = True, **kwargs) -> tuple[np.ndarra
     if verbose:
         logger.info("Detected .%s", file_ext)
 
-    data_df, metadata = _load_by_extension(file_path, file_ext, file_extension, verbose, kwargs)
+    data_df, metadata = _load_by_extension(
+        file_path, file_ext, file_extension, verbose, kwargs
+    )
     metadata["file_name"] = file_name
     metadata["file_dir"] = Path(file_path).parent
     metadata["file_extension"] = file_extension
@@ -429,7 +446,9 @@ def csv_from_jkmn_to_array(file_name: str) -> np.ndarray:
     """
     file = pd.read_csv(file_name)
     new_df = (
-        file.T.reset_index().T.reset_index(drop=True).set_axis([f"lead.{i + 1}" for i in range(file.shape[1])], axis=1)
+        file.T.reset_index()
+        .T.reset_index(drop=True)
+        .set_axis([f"lead.{i + 1}" for i in range(file.shape[1])], axis=1)
     )
     arrayed = np.rot90(new_df)
     return np.flipud(arrayed)
@@ -500,3 +519,114 @@ def dvrmn_csv_freq_find(file_name: str) -> int:
     sum_time = (hours * 3600) + (minutes * 60) + seconds
 
     return round(sample_points / sum_time)
+
+
+class BiopacMetadata(TypedDict):
+    """Dictionary to store metadata from Biopac CSV files."""
+
+    recording_date: str | None
+    sample_time: float | None
+    sample_time_unit: str | None
+    channel_number: int
+    labels: list[str]
+    units: list[str]
+    exp_name: str | None
+    fs: int | None
+
+
+def load_biopac_csv(
+    file: str, amplifier_model: str = "EMG100C"
+) -> tuple[pd.DataFrame, BiopacMetadata]:
+    """Import data from a Biopac CSV file and return the data as a pandas DataFrame.
+
+    Args:
+        file (str): Path to the Biopac CSV file.
+        amplifier_model (str): The model of the Biopac amplifier used for the recording.
+            Default is "EMG100C". Used in the regex pattern to extract channel names,
+            as BIOPAC's exporter automatically appends the amplifier's model
+            to the channel names.
+
+    Returns:
+        tuple: A `(data_df, metadata)` pair. `data_df` is a pandas.DataFrame with a
+            `Time [s]` column (sample timestamps in seconds) plus one column per
+            channel, named by label. `metadata` is a dict with the keys:
+            `recording_date`: Recording date and time.
+            `sample_time`: Sample timestamp from the start of the recording, in seconds.
+            `sample_time_unit`: Original unit of the sample time.
+            `channel_number`: Number of channels in the recording.
+            `labels`: Labels of the channels.
+            `units`: Units of the channels.
+            `exp_name`: Experiment name.
+    """
+    scalar_tokens = {
+        "recording_date": re.compile(
+            r"Recording on: (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})"
+        ),
+        "sample_time": re.compile(r"([0-9]*\.[0-9]*) [m]?sec"),
+        "sample_time_unit": re.compile(r"[0-9]*\.[0-9]* ([m]?sec)"),
+        "channel_number": re.compile(r"([0-9]*) channels"),
+    }
+
+    channel_name_pattern = re.compile(
+        r"^([A-Za-z0-9]+) - " + re.escape(amplifier_model) + r"$"
+    )
+
+    metadata: BiopacMetadata = {
+        "recording_date": None,
+        "sample_time": None,
+        "sample_time_unit": None,
+        "channel_number": -1,
+        "labels": [],
+        "units": [],
+        "exp_name": None,
+        "fs": None,
+    }
+
+    row_counter = 0
+    with Path(file).open("r") as f:
+        total_row_count = sum(1 for row in f)
+        f.seek(0)
+        _line = f.readline()
+        row_counter += 1
+        metadata["exp_name"] = _line.strip()
+        while (not _line.startswith("sec")) and row_counter < total_row_count:
+            _line = f.readline()
+            row_counter += 1
+            if not len(_line):
+                continue
+            for key, pattern in scalar_tokens.items():
+                match = re.search(pattern, _line)
+                if match is not None:
+                    metadata[key] = match.group(1)
+                    if (
+                        key == "channel_number"
+                        and metadata["channel_number"] is not None
+                    ):
+                        metadata["channel_number"] = int(metadata["channel_number"])
+                        for _ in range(metadata["channel_number"]):
+                            _line = f.readline()
+                            row_counter += 1
+                            match = re.search(channel_name_pattern, _line)
+                            if match is not None:
+                                metadata["labels"].append(match.group(1))
+                                _line = f.readline().strip()
+                                row_counter += 1
+                                metadata["units"].append(_line)
+                            if _line.startswith("sec"):
+                                break
+                    continue
+
+    if metadata["sample_time"] is not None:
+        scaling = 1e-3 if metadata["sample_time_unit"] == "msec" else 1.0
+        metadata["sample_time"] = scaling * float(metadata["sample_time"])
+        metadata["fs"] = int(1 / metadata["sample_time"])
+
+    data_df = pd.read_csv(
+        filepath_or_buffer=file,
+        header=row_counter,
+        names=["Time [s]", *metadata["labels"]],
+        index_col=None,
+        usecols=range(len(metadata["labels"]) + 1),
+    )
+
+    return data_df, metadata
