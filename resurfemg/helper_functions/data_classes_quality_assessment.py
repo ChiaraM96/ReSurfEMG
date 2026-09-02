@@ -662,7 +662,7 @@ def test_pocc_quality(
     parameter_names: dict[str, str] | None = None,  # noqa: PT028
     verbose: bool = True,  # noqa: PT028
 ) -> None:
-    """Test EMG PeaksSet according to quality criteria in Warnaar et al. (2024).
+    """Test Ventilator PeaksSet according to quality criteria in Warnaar et al. (2024).
 
     consecutive_poccs, and pocc_upslope. Peak validity is updated
     in the PeaksSet object.

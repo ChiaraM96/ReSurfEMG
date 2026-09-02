@@ -14,7 +14,7 @@ import inspect
 import logging
 import warnings
 from textwrap import dedent, wrap
-from typing import TYPE_CHECKING, Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -244,7 +244,11 @@ class TimeSeries:
         # Use direct dict access for the raw signal since `self.__getitem__`
         # can return `None` (static checkers complain about `.shape` on None).
 
-        y_data = np.zeros(self._y_data["raw"].shape if isinstance(self._y_data["raw"], np.ndarray) else (0,))
+        y_data = np.zeros(
+            self._y_data["raw"].shape
+            if isinstance(self._y_data["raw"], np.ndarray)
+            else (0,)
+        )
         res_order = ["env", "clean", "filt", "raw"]
         if signal_type == "env":
             if "env" in self._y_data:
@@ -268,14 +272,7 @@ class TimeSeries:
                 raise KeyError(msg)
             if signal_type is not None and find_idx > 0:
                 warnings.warn(
-                    "\n".join(
-                        wrap(
-                            dedent(
-                                f"""Warning: No {signal_type} data available, using raw
-                     data instead."""
-                            )
-                        )
-                    )
+                    f"No {signal_type} data available, using raw data instead."
                 )
         # If the signal type is not in the resolution order, find the data
         # or its next best option
@@ -363,13 +360,15 @@ class TimeSeries:
         """
         if name in self.peaks and not overwrite:
             msg = "ECG peaks already detected. Use overwrite=True"
-            raise UserWarning(msg)
+            warnings.warn(msg, UserWarning)
 
         if ecg_raw is None:
             lp_cf = min(500.0, 0.95 * self.param["fs"] / 2)
             ecg_raw = cast(
                 "np.ndarray",
-                filt.emg_bandpass_butter(self["raw"], high_pass=1, low_pass=lp_cf, fs_emg=self.param["fs"]),
+                filt.emg_bandpass_butter(
+                    self["raw"], high_pass=1, low_pass=lp_cf, fs_emg=self.param["fs"]
+                ),
             )
 
         ecg_peak_idxs = ecg_rm.detect_ecg_peaks(
@@ -427,7 +426,10 @@ class TimeSeries:
             )
             signal_io = (kwargs["signal_type"], "filt")
 
-        if any(key in kwargs for key in ["ecg_peak_idxs", "ecg_raw", "bp_filter", "overwrite"]):
+        if any(
+            key in kwargs
+            for key in ["ecg_peak_idxs", "ecg_raw", "bp_filter", "overwrite"]
+        ):
             warnings.warn(
                 "\n".join(
                     wrap(
@@ -457,8 +459,10 @@ class TimeSeries:
             else:
                 if ecg_peakset_name not in self.peaks and not overwrite:
                     msg = "ECG peaks already detected. Use overwrite=True"
-                    raise UserWarning(msg)
-                ecg_raw = kwargs.get("ecg_raw", self.signal_type_data(signal_type="raw"))
+                    warnings.warn(msg, UserWarning)
+                ecg_raw = kwargs.get(
+                    "ecg_raw", self.signal_type_data(signal_type="raw")
+                )
                 self.set_peaks(
                     signal=ecg_raw,
                     peak_idxs=ecg_peak_idxs,
@@ -477,7 +481,7 @@ class TimeSeries:
             y_data,
             ecg_peak_idxs,
             cast("int", gate_width_samples),
-            ecg_shift=10,
+            ecg_shift=-10,
             method=fill_method,
         )
 
@@ -522,7 +526,10 @@ class TimeSeries:
             )
             signal_io = (kwargs["signal_type"], "filt")
 
-        if any(key in kwargs for key in ["ecg_peak_idxs", "ecg_raw", "bp_filter", "overwrite"]):
+        if any(
+            key in kwargs
+            for key in ["ecg_peak_idxs", "ecg_raw", "bp_filter", "overwrite"]
+        ):
             warnings.warn(
                 "\n".join(
                     wrap(
@@ -552,8 +559,10 @@ class TimeSeries:
             else:
                 if ecg_peakset_name not in self.peaks and not overwrite:
                     msg = "ECG peaks already detected. Use overwrite=True"
-                    raise UserWarning(msg)
-                ecg_raw = kwargs.get("ecg_raw", self.signal_type_data(signal_type="raw"))
+                    warnings.warn(msg, UserWarning)
+                ecg_raw = kwargs.get(
+                    "ecg_raw", self.signal_type_data(signal_type="raw")
+                )
                 self.set_peaks(
                     signal=ecg_raw,
                     peak_idxs=ecg_peak_idxs,
@@ -632,11 +641,15 @@ class TimeSeries:
         if env_type == "rms" or env_type is None:
             self[signal_io[1]] = evl.full_rolling_rms(y_data, env_window)
             if ci_alpha is not None:
-                self[signal_io[1] + "_ci"] = evl.rolling_rms_ci(y_data, env_window, alpha=ci_alpha)
+                self[signal_io[1] + "_ci"] = evl.rolling_rms_ci(
+                    y_data, env_window, alpha=ci_alpha
+                )
         elif env_type == "arv":
             self[signal_io[1]] = evl.full_rolling_arv(y_data, env_window)
             if ci_alpha is not None:
-                self[signal_io[1] + "_ci"] = evl.rolling_arv_ci(y_data, env_window, alpha=ci_alpha)
+                self[signal_io[1] + "_ci"] = evl.rolling_arv_ci(
+                    y_data, env_window, alpha=ci_alpha
+                )
         else:
             msg = "Invalid envelope type"
             raise ValueError(msg)
@@ -646,7 +659,9 @@ class TimeSeries:
         percentile: int = 33,
         window_s: int | None = None,
         step_s: int | None = None,
-        base_method: str = "default",
+        base_method: Literal[
+            "default", "moving_baseline", "slopesum_baseline"
+        ] = "default",
         signal_io: tuple[str | None, str] = (None, "baseline"),
         augm_percentile: int = 25,
         ma_window: int | None = None,
@@ -745,8 +760,10 @@ class TimeSeries:
         """
         if peak_set_name in self.peaks and not overwrite:
             msg = "PeaksSet already exists. Use overwrite=True"
-            raise UserWarning(msg)
-        self.peaks[peak_set_name] = PeaksSet(peak_idxs=peak_idxs, t_data=self.t_data, signal=signal)
+            warnings.warn(msg, UserWarning)
+        self.peaks[peak_set_name] = PeaksSet(
+            peak_idxs=peak_idxs, t_data=self.t_data, signal=signal
+        )
 
     def detect_emg_breaths(
         self,
@@ -788,7 +805,11 @@ class TimeSeries:
             raise ValueError(msg)
 
         signal = np.asarray(self[signal_io[0][0]])
-        y_baseline = np.asarray(self[signal_io[0][1]]) if signal_io[0][1] in self._y_data else np.zeros(signal.shape)
+        y_baseline = (
+            np.asarray(self[signal_io[0][1]])
+            if signal_io[0][1] in self._y_data
+            else np.zeros(signal.shape)
+        )
         if signal_io[0][1] not in self._y_data:
             warnings.warn(
                 "\n".join(
@@ -856,7 +877,9 @@ class TimeSeries:
         t_peakset_peaks = peak_set["peak_idx"] / self.param["fs"]
         link_peak_nrs = evt.find_linked_peaks(t_reference_peaks, t_peakset_peaks)
 
-        self.peaks[linked_peak_set_name] = PeaksSet(peak_set.signal, peak_set.t_data, peak_idxs=None)
+        self.peaks[linked_peak_set_name] = PeaksSet(
+            peak_set.signal, peak_set.t_data, peak_idxs=None
+        )
         for attr in ["peak_df", "quality_values_df", "quality_outcomes_df"]:
             setattr(
                 self.peaks[linked_peak_set_name],
@@ -927,7 +950,11 @@ class TimeSeries:
 
         if include_aub:
             aub_window_s = aub_window_s or 5 * self.param["fs"]
-            aub_reference_signal = np.asarray(peak_set.signal if aub_reference_signal is None else aub_reference_signal)
+            aub_reference_signal = np.asarray(
+                peak_set.signal
+                if aub_reference_signal is None
+                else aub_reference_signal
+            )
             aub, y_refs = feat.area_under_baseline(
                 signal=peak_set.signal,
                 fs=self.param["fs"],
@@ -958,7 +985,9 @@ class TimeSeries:
         results are stored in the self.peaks[peak_set_name].quality_outcomes_df
         and self.peaks[peak_set_name].quality_values_df DataFrames.
         """
-        data_qa.test_emg_quality(self, peak_set_name, cutoff, skip_tests, parameter_names, verbose)
+        data_qa.test_emg_quality(
+            self, peak_set_name, cutoff, skip_tests, parameter_names, verbose
+        )
 
     def test_pocc_quality(
         self,
@@ -968,13 +997,15 @@ class TimeSeries:
         parameter_names: dict[str, str] | None = None,
         verbose: bool = True,
     ) -> None:
-        """Test EMG PeaksSet according to quality criteria in Warnaar et al. (2024).
+        """Test ventilator PeaksSet according to quality criteria in Warnaar et al. (2024).
 
         See helper_functions.data_classes_quality_assessment submodule. The
         results are stored in the self.peaks[peak_set_name].quality_outcomes_df
         and self.peaks[peak_set_name].quality_values_df DataFrames.
         """
-        data_qa.test_pocc_quality(self, peak_set_name, cutoff, skip_tests, parameter_names, verbose)
+        data_qa.test_pocc_quality(
+            self, peak_set_name, cutoff, skip_tests, parameter_names, verbose
+        )
 
     def test_linked_peak_sets(
         self,
@@ -1046,7 +1077,11 @@ class TimeSeries:
             )
             signal_io = (kwargs["signal_type"], "env")
         axis = axes if axes is not None else plt.subplots()[1]
-        colors = colors if colors is not None else ["tab:blue", "tab:orange", "tab:red", "tab:cyan", "tab:green"]
+        colors = (
+            colors
+            if colors is not None
+            else ["tab:blue", "tab:orange", "tab:red", "tab:cyan", "tab:green"]
+        )
 
         y_data = self.signal_type_data(signal_type=signal_io[0])
         axis.grid(True)
@@ -1055,7 +1090,11 @@ class TimeSeries:
 
         baseline = self._y_data.get("baseline")
         env_ci = self._y_data.get("env_ci")
-        if baseline_bool is True and baseline is not None and np.any(~np.isnan(baseline), axis=0):
+        if (
+            baseline_bool is True
+            and baseline is not None
+            and np.any(~np.isnan(baseline), axis=0)
+        ):
             axis.plot(self.t_data, baseline, color=colors[1])
         if plot_ci and env_ci is not None:
             axis.fill_between(
@@ -1073,6 +1112,7 @@ class TimeSeries:
         valid_only: bool = False,
         colors: str | list[str] | None = None,
         markers: str | list[str] | None = None,
+        n_peaks_to_plot: int | None = None,
     ) -> None:
         """Plot the markers for the peak set.
 
@@ -1092,12 +1132,15 @@ class TimeSeries:
                 markers (str or list, optional): One marker or list of up to 3
                     markers for peak, start, and end. If 2 markers are provided,
                     start and end share the same marker.
+                n_peaks_to_plot (int, optional): Number of peaks to plot.
+                    If None, all peaks are plotted. Default is None.
         """
         if peak_set_name not in self.peaks:
             msg = "Non-existent PeaksSet key"
             raise KeyError(msg)
 
         peak_set = self.peaks[peak_set_name]
+
         valid = (
             peak_set["valid"]
             if valid_only and "valid" in peak_set.peak_df.columns
@@ -1120,6 +1163,20 @@ class TimeSeries:
         x_vals_start, y_vals_start = get_values("start_idx")
         x_vals_end, y_vals_end = get_values("end_idx")
 
+        if n_peaks_to_plot is not None:
+            x_vals_peak, y_vals_peak = (
+                x_vals_peak[:n_peaks_to_plot],
+                y_vals_peak[:n_peaks_to_plot],
+            )
+            x_vals_start, y_vals_start = (
+                x_vals_start[:n_peaks_to_plot],
+                y_vals_start[:n_peaks_to_plot],
+            )
+            x_vals_end, y_vals_end = (
+                x_vals_end[:n_peaks_to_plot],
+                y_vals_end[:n_peaks_to_plot],
+            )
+
         def get_color_marker(values: str | list[str] | None, default: str) -> list[str]:
             if values is None:
                 values = [default]
@@ -1132,10 +1189,20 @@ class TimeSeries:
         axes_arr = np.atleast_1d(cast("Any", axes))
         if len(axes_arr) == 1 and len(x_vals_peak) > 1:
             axes = np.matlib.repmat(cast("Any", axes), len(x_vals_peak), 1).flatten()
+            axes_arr = np.atleast_1d(cast("Any", axes))
         for axis, x_peak, y_peak, x_start, y_start, x_end, y_end in zip(
-            axes_arr, x_vals_peak, y_vals_peak, x_vals_start, y_vals_start, x_vals_end, y_vals_end, strict=True
+            axes_arr,
+            x_vals_peak,
+            y_vals_peak,
+            x_vals_start,
+            y_vals_start,
+            x_vals_end,
+            y_vals_end,
+            strict=True,
         ):
-            axis.plot(x_peak, y_peak, marker=peak_marker, color=peak_color, linestyle="None")
+            axis.plot(
+                x_peak, y_peak, marker=peak_marker, color=peak_color, linestyle="None"
+            )
             if x_start is not None:
                 axis.plot(
                     x_start,
@@ -1145,7 +1212,9 @@ class TimeSeries:
                     linestyle="None",
                 )
             if x_end is not None:
-                axis.plot(x_end, y_end, marker=end_marker, color=end_color, linestyle="None")
+                axis.plot(
+                    x_end, y_end, marker=end_marker, color=end_color, linestyle="None"
+                )
 
     def plot_peaks(
         self,
@@ -1157,9 +1226,14 @@ class TimeSeries:
         colors: list[str] | None = None,
         baseline_bool: bool = True,
         plot_ci: bool = False,
+        n_peaks_to_plot: int | None = None,
         **kwargs,
     ) -> None:
         """Plot the indicated peaks in the provided axes.
+
+            The function creates one subplot per peak in the provided axes.
+            For each peak, the function plots the portion of signal around the peak specified by the margin_s argument.
+            No peak markers are plotted.
 
             By default the most advanced signal type (envelope > clean > filt > raw)
             is plotted in the provided colours.
@@ -1180,6 +1254,8 @@ class TimeSeries:
                 baseline_bool (bool): Plot the baseline. Default is True.
                 plot_ci (bool): Plot the confidence interval of the envelope.
                     Default is False.
+                n_peaks_to_plot (int, optional): Number of peaks to plot.
+                    If None, all peaks are plotted. Default is None.
                 **kwargs: Accepts deprecated ``signal_type`` argument.
         """
         if "signal_type" in kwargs:
@@ -1202,19 +1278,39 @@ class TimeSeries:
             valid = peak_set["valid"]
             start_idxs, end_idxs = start_idxs[valid], end_idxs[valid]
 
+        if n_peaks_to_plot is not None:
+            start_idxs, end_idxs = (
+                start_idxs[:n_peaks_to_plot],
+                end_idxs[:n_peaks_to_plot],
+            )
+
         if axes is None:
             _, axes = plt.subplots(nrows=1, ncols=len(start_idxs), sharey=True)
         axes = np.asarray(np.atleast_1d(cast("Any", axes)))
-        colors = colors if colors is not None else ["tab:blue", "tab:orange", "tab:red", "tab:cyan", "tab:green"]
-        y_data = peak_set.signal if signal_io[0] is None else self.signal_type_data(signal_type=signal_io[0])
+        colors = (
+            colors
+            if colors is not None
+            else ["tab:blue", "tab:orange", "tab:red", "tab:cyan", "tab:green"]
+        )
+        y_data = (
+            peak_set.signal
+            if signal_io[0] is None
+            else self.signal_type_data(signal_type=signal_io[0])
+        )
         m_s = margin_s if margin_s is not None else self.param["fs"] // 2
         ci = self._y_data.get("env_ci")
         baseline = self._y_data.get("baseline")
         for axis, x_start, x_end in zip(axes, start_idxs, end_idxs, strict=True):
             s_start, s_end = max(0, x_start - m_s), max(0, x_end + m_s)
             axis.grid(True)
-            axis.plot(self.t_data[s_start:s_end], y_data[s_start:s_end], color=colors[0])
-            if baseline_bool and baseline is not None and np.any(~np.isnan(baseline), axis=0):
+            axis.plot(
+                self.t_data[s_start:s_end], y_data[s_start:s_end], color=colors[0]
+            )
+            if (
+                baseline_bool
+                and baseline is not None
+                and np.any(~np.isnan(baseline), axis=0)
+            ):
                 axis.plot(
                     self.t_data[s_start:s_end],
                     baseline[s_start:s_end],
@@ -1237,6 +1333,7 @@ class TimeSeries:
         axes: Axes | np.ndarray | None,
         valid_only: bool = False,
         colors: list[str] | None = None,
+        n_peaks_to_plot: int | None = None,
     ) -> None:
         """Plot the curve-fits for the peak set.
 
@@ -1251,12 +1348,18 @@ class TimeSeries:
                     Default is False.
                 colors (str or list, optional): One color or list of colors for
                     the fitted curve.
+                n_peaks_to_plot (int, optional): Number of peaks to plot.
+                    If None, all peaks are plotted. Default is None.
         """
         peak_set = self._check_peak_set(self.peaks.get(peak_set_name))
 
         axes = np.asarray(np.atleast_1d(cast("Any", axes)))
         required_params = ["y_min", "a", "b", "c"]
-        missing_params = [param for param in required_params if f"bell_{param}" not in peak_set.peak_df.columns]
+        missing_params = [
+            param
+            for param in required_params
+            if f"bell_{param}" not in peak_set.peak_df.columns
+        ]
         if missing_params:
             msg = f"Missing parameters in PeaksSet: {', '.join(missing_params)}"
             raise KeyError(msg)
@@ -1266,6 +1369,9 @@ class TimeSeries:
             if valid_only and "valid" in peak_set.peak_df.columns
             else peak_set.peak_df
         )
+        if n_peaks_to_plot is not None:
+            plot_peak_df = plot_peak_df.iloc[:n_peaks_to_plot]
+
         color = colors[0] if isinstance(colors, list) and colors else "tab:green"
 
         for axis, (_, row) in zip(axes, plot_peak_df.iterrows(), strict=True):
@@ -1282,7 +1388,9 @@ class TimeSeries:
             )
 
         if len(axes) > 1:
-            for _, (axis, (_, row)) in enumerate(zip(axes, plot_peak_df.iterrows(), strict=True)):
+            for _, (axis, (_, row)) in enumerate(
+                zip(axes, plot_peak_df.iterrows(), strict=True)
+            ):
                 y_bell = mo.bell_curve(
                     peak_set.t_data[row.start_idx : row.end_idx],
                     a=row.bell_a,
@@ -1315,6 +1423,7 @@ class TimeSeries:
         signal_io: tuple[str, ...] | None = None,
         valid_only: bool = False,
         colors: list[str] | None = None,
+        n_peaks_to_plot: int | None = None,
         **kwargs,
     ) -> None:
         """Plot the area under the baseline (AUB) for the peak set.
@@ -1332,6 +1441,8 @@ class TimeSeries:
                     Default is False.
                 colors (str or list, optional): One color or list of up to 3
                     colors for the markers.
+                n_peaks_to_plot (int, optional): Number of peaks to plot.
+                    If None, all peaks are plotted. Default is None.
                 **kwargs: Accepts deprecated ``signal_type`` argument.
         """
         if "signal_type" in kwargs:
@@ -1358,7 +1469,11 @@ class TimeSeries:
             msg = "aub_y_ref not included in PeaksSet, area under the baseline is not evaluated yet."
             raise KeyError(msg)
 
-        y_data = peak_set.signal if signal_io[0] is None else self.signal_type_data(signal_type=signal_io[0])
+        y_data = (
+            peak_set.signal
+            if signal_io[0] is None
+            else self.signal_type_data(signal_type=signal_io[0])
+        )
 
         plot_peak_df = (
             peak_set.peak_df.loc[peak_set.peak_df["valid"]]
@@ -1366,10 +1481,21 @@ class TimeSeries:
             else peak_set.peak_df
         )
 
-        color = colors if isinstance(colors, str) else colors[0] if isinstance(colors, list) and colors else "tab:cyan"
+        if n_peaks_to_plot is not None:
+            plot_peak_df = plot_peak_df.iloc[:n_peaks_to_plot]
+
+        color = (
+            colors
+            if isinstance(colors, str)
+            else colors[0]
+            if isinstance(colors, list) and colors
+            else "tab:cyan"
+        )
 
         if len(axes) > 1:
-            for _, (axis, (_, row)) in enumerate(zip(axes, plot_peak_df.iterrows(), strict=True)):
+            for _, (axis, (_, row)) in enumerate(
+                zip(axes, plot_peak_df.iterrows(), strict=True)
+            ):
                 axis.plot(
                     peak_set.t_data[[row.start_idx, row.end_idx]],
                     [row.aub_y_ref, row.aub_y_ref],
@@ -1434,6 +1560,8 @@ class TimeSeriesGroup:
         "plot_peaks",
         "plot_markers",
         "set_peaks",
+        "calculate_time_products",
+        "link_peak_set",
     ]
 
     @staticmethod
@@ -1454,7 +1582,9 @@ class TimeSeriesGroup:
         return arr, n_samp, n_channel
 
     @staticmethod
-    def _resolve_time(t_data: np.ndarray | None, fs: int | None, n_samp: int) -> tuple[np.ndarray, int]:
+    def _resolve_time(
+        t_data: np.ndarray | None, fs: int | None, n_samp: int
+    ) -> tuple[np.ndarray, int]:
         """Resolve the time axis and sampling rate from the provided time data and sampling rate."""
         if t_data is None and fs is None:
             msg = "Either time data (t_data) or sampling rate (fs) must be provided."
@@ -1473,7 +1603,9 @@ class TimeSeriesGroup:
         return np.arange(n_samp) / float(fs), fs
 
     @staticmethod
-    def _resolve_labels_units(labels: list[str] | None, units: list[str] | None, n_channel: int) -> tuple[list, list]:
+    def _resolve_labels_units(
+        labels: list[str] | None, units: list[str] | None, n_channel: int
+    ) -> tuple[list, list]:
         """Resolve the labels and units for the channels from the provided labels and units lists."""
         if labels is None:
             out_labels = n_channel * [None]
@@ -1587,7 +1719,7 @@ class TimeSeriesGroup:
             self,
             *,
             channel_idxs: list[int] | np.ndarray | None = None,
-            peak_set_name: str,
+            peak_set_name: str | list[str],
             axes: Axes | np.ndarray | None = None,
             signal_io: tuple[str | None, ...] = (None,),
             margin_s: int | None = None,
@@ -1595,6 +1727,7 @@ class TimeSeriesGroup:
             colors: list[str] | None = None,
             baseline_bool: bool = True,
             plot_ci: bool = False,
+            n_peaks_to_plot: int | None = None,
             **kwargs,
         ) -> None:
             """Plot peak windows for the indicated channels."""
@@ -1605,11 +1738,12 @@ class TimeSeriesGroup:
             self,
             *,
             channel_idxs: list[int] | np.ndarray | None = None,
-            peak_set_name: str,
+            peak_set_name: str | list[str],
             axes: Axes | np.ndarray | None = None,
             valid_only: bool = False,
             colors: str | list[str] | None = None,
             markers: str | list[str] | None = None,
+            n_peaks_to_plot: int | None = None,
         ) -> None:
             """Plot peak markers for the indicated channels."""
 
@@ -1628,6 +1762,23 @@ class TimeSeriesGroup:
 
         ...
 
+        def calculate_time_products(
+            self,
+            channel_idxs: list[int] | np.ndarray | None = None,
+            *,
+            peak_set_name: str,
+            include_aub: bool = True,
+            aub_window_s: int | None = None,
+            aub_reference_signal: np.ndarray
+            | tuple[np.ndarray, np.ndarray]
+            | None = None,
+            parameter_name: str | None = None,
+            signal_io: tuple[str, ...] = ("baseline",),
+        ) -> None:
+            """Calculate time-products for the indicated channels."""
+
+        ...
+
     def __init__(
         self,
         y_raw: np.ndarray,
@@ -1635,6 +1786,7 @@ class TimeSeriesGroup:
         fs: int | None = None,
         labels: list[str] | None = None,
         units: list[str] | None = None,
+        verbose: bool = True,
     ) -> None:
         """Initialize the TimeSeriesGroup object.
 
@@ -1646,6 +1798,7 @@ class TimeSeriesGroup:
                     t_data.
                 labels (list, optional): List of labels, one per channel.
                 units (list, optional): List of signal units, one per channel.
+                verbose: bool, optional: If True, print information about the initialization.
         """
         self.channels = []
         self.fs: int
@@ -1653,6 +1806,7 @@ class TimeSeriesGroup:
         t_data, self.fs = self._resolve_time(t_data, fs, n_samp)
         self.param = {"fs": self.fs, "n_samp": n_samp, "n_channel": n_channel}
         self.labels, self.y_units = self._resolve_labels_units(labels, units, n_channel)
+        self.verbose = verbose
         for idx in range(n_channel):
             self.channels.append(
                 TimeSeries(
@@ -1669,9 +1823,13 @@ class TimeSeriesGroup:
         super().__init_subclass__(**kwargs)
         for method_name in cls._available_methods:
             if method_name not in cls.__dict__:
-                source: Callable[..., Any] | None = getattr(TimeSeries, method_name, None)
+                source: Callable[..., Any] | None = getattr(
+                    TimeSeries, method_name, None
+                )
 
-                def make_wrapper(name: str, src: Callable[..., Any] | None) -> Callable[..., Any]:
+                def make_wrapper(
+                    name: str, src: Callable[..., Any] | None
+                ) -> Callable[..., Any]:
                     def wrapper(
                         self: TimeSeriesGroup,
                         *,
@@ -1690,7 +1848,11 @@ class TimeSeriesGroup:
                             default=None,
                         )
                         kwarg_index = next(
-                            (idx for idx, param in enumerate(params) if param.kind is inspect.Parameter.VAR_KEYWORD),
+                            (
+                                idx
+                                for idx, param in enumerate(params)
+                                if param.kind is inspect.Parameter.VAR_KEYWORD
+                            ),
                             len(params),
                         )
                         params.insert(
@@ -1719,7 +1881,9 @@ class TimeSeriesGroup:
     def __iter__(self):
         return iter(self.channels)
 
-    def to_numpy(self, channel_idxs: int | np.ndarray | None = None, signal_io: tuple = (None,)) -> np.ndarray:
+    def to_numpy(
+        self, channel_idxs: int | np.ndarray | None = None, signal_io: tuple = (None,)
+    ) -> np.ndarray:
         """Convert the TimeSeriesGroup to a numpy array.
 
             The output is a 2D
@@ -1741,35 +1905,59 @@ class TimeSeriesGroup:
             channel_idxs = np.arange(self.param["n_channel"])
         elif isinstance(channel_idxs, int):
             channel_idxs = np.array([channel_idxs])
-        return np.array([self.channels[idx].signal_type_data(signal_io[0]) for idx in np.asarray(channel_idxs)])
+        return np.array(
+            [
+                self.channels[idx].signal_type_data(signal_io[0])
+                for idx in np.asarray(channel_idxs)
+            ]
+        )
 
     @staticmethod
     def _check_plot_kwargs(method: str, channel_idxs: np.ndarray, kwargs: dict) -> None:
         """Validate and auto-create axes for plot_* methods."""
+        _n_channels = len(channel_idxs)
         if "axes" not in kwargs:
-            _, kwargs["axes"] = plt.subplots(nrows=len(channel_idxs), ncols=1, figsize=(10, 6), sharex=True)
+            _, kwargs["axes"] = plt.subplots(
+                nrows=_n_channels, ncols=1, figsize=(10, 6), sharex=True
+            )
 
         if method == "plot_full":
             kwargs["axes"] = np.atleast_1d(kwargs["axes"])
-            if len(channel_idxs) > len(kwargs["axes"]):
+            if _n_channels > len(kwargs["axes"]):
                 msg = "Provided axes have not enough rows for all channels to plot."
                 raise ValueError(msg)
-            if len(channel_idxs) < len(kwargs["axes"]):
-                warnings.warn("\n".join(wrap(dedent("More axes provided than channels to plot."))))
+            if _n_channels < len(kwargs["axes"]):
+                warnings.warn(
+                    "\n".join(wrap(dedent("More axes provided than channels to plot.")))
+                )
 
         elif method in ["plot_peaks", "plot_markers"]:
             kwargs["axes"] = np.atleast_2d(kwargs["axes"])
-            if kwargs["axes"].shape[0] < len(channel_idxs):
+            if max(kwargs["axes"].shape) < _n_channels:
                 msg = "Provided axes have not enough rows for all channels to plot."
                 raise ValueError(msg)
             if "peak_set_name" not in kwargs:
                 msg = "No peak_set_name provided."
                 raise ValueError(msg)
+            _n_peakset_names = (
+                len(kwargs["peak_set_name"])
+                if isinstance(kwargs["peak_set_name"], (list, np.ndarray))
+                else 1
+            )
+            if _n_peakset_names not in [1, _n_channels]:
+                msg = "Not enough peak_set_name provided for all channels to plot."
+                raise ValueError(msg)
+            if _n_peakset_names == 1 and _n_channels > 1:
+                kwargs["peak_set_name"] = [kwargs["peak_set_name"][0]] * _n_channels
 
-    def _check_channel_idxs(self, channel_idxs: list[int] | np.ndarray | None, method: str) -> np.ndarray:
+    def _check_channel_idxs(
+        self, channel_idxs: list[int] | np.ndarray | None, method: str
+    ) -> np.ndarray:
         return np.asarray(self._resolve_channels(channel_idxs))
 
-    def _run_wrapper(self, method: str, channel_idxs: list[int] | np.ndarray | None = None, **kwargs) -> None:
+    def _run_wrapper(
+        self, method: str, channel_idxs: list[int] | np.ndarray | None = None, **kwargs
+    ) -> None:
         if method not in self._available_methods:
             msg = "Invalid method"
             raise ValueError(msg)
@@ -1789,11 +1977,22 @@ class TimeSeriesGroup:
             if method.startswith("plot_"):
                 if method in ["plot_peaks", "plot_markers"]:
                     _kwargs["axes"] = kwargs["axes"][idx, :]
+                    _kwargs["peak_set_name"] = kwargs["peak_set_name"][idx]
+                    if (
+                        _kwargs["peak_set_name"] is None
+                        or _kwargs["peak_set_name"]
+                        not in self.channels[channel_idx].peaks
+                    ):
+                        msg = f"Peak set '{_kwargs['peak_set_name']}' not found in channel {channel_idx}."
+                        warnings.warn(msg, UserWarning)
+                        continue
                 else:
                     _kwargs["axes"] = kwargs["axes"][idx]
             getattr(self.channels[channel_idx], method)(**_kwargs)
 
-    def run(self, method: str, channel_idxs: list[int] | np.ndarray | None = None, **kwargs) -> None:
+    def run(
+        self, method: str, channel_idxs: list[int] | np.ndarray | None = None, **kwargs
+    ) -> None:
         """LEGACY - Run the indicated method on the indicated channels with the provided kwargs."""
         warnings.warn(
             "\n".join(
@@ -1833,6 +2032,7 @@ class EmgDataGroup(TimeSeriesGroup):
         "get_ecg_peaks",
         "gating",
         "wavelet_denoising",
+        "detect_emg_breaths",
     ]
 
     def __init__(
@@ -1842,18 +2042,22 @@ class EmgDataGroup(TimeSeriesGroup):
         fs: int | None = None,
         labels: list[str] | None = None,
         units: list[str] | None = None,
+        verbose: bool = True,
     ):
-        super().__init__(y_raw, t_data=t_data, fs=fs, labels=labels, units=units)
+        super().__init__(
+            y_raw, t_data=t_data, fs=fs, labels=labels, units=units, verbose=verbose
+        )
 
         labels_lc = [label.lower() for label in labels] if labels is not None else []
-        if "ecg" in labels_lc:
-            self.ecg_idx = labels_lc.index("ecg")
-            logger.warning("Auto-detected ECG channel from labels.")
-        else:
-            logger.warning(
-                "No ECG channel detected. Set ECG channel index with `EmgDataGroup.set_ecg_idx(arg)` method."
-            )
-            self.ecg_idx = None
+        if self.verbose:
+            if "ecg" in labels_lc:
+                self.ecg_idx = labels_lc.index("ecg")
+                logger.warning("Auto-detected ECG channel from labels.")
+            else:
+                logger.warning(
+                    "No ECG channel detected. Set ECG channel index with `EmgDataGroup.set_ecg_idx(arg)` method."
+                )
+                self.ecg_idx = None
 
     if TYPE_CHECKING:
 
@@ -1912,6 +2116,23 @@ class EmgDataGroup(TimeSeriesGroup):
 
         ...
 
+        def detect_emg_breaths(
+            self,
+            channel_idxs: list[int] | np.ndarray | None = None,
+            *,
+            threshold: int = 0,
+            prominence_factor: float = 0.5,
+            min_peak_width_s: int | None = None,
+            peak_set_name: str = "breaths",
+            start_idx: int = 0,
+            end_idx: int | None = None,
+            overwrite: bool = True,
+            signal_io: tuple[tuple[str | None, str], ...] = (("env", "baseline"),),
+        ) -> None:
+            """Detect breaths in the EMG signal envelope."""
+
+        ...
+
     def set_ecg_idx(self, ecg_idx: int | str) -> None:
         """Set the ECG channel index in the group.
 
@@ -1923,13 +2144,19 @@ class EmgDataGroup(TimeSeriesGroup):
         elif isinstance(ecg_idx, str):
             self.ecg_idx = self.labels.index(ecg_idx)
 
-    def _check_ecg_future_warning(self, channel_idxs: list[int] | np.ndarray | None, kwargs: dict) -> None:
+    def _check_ecg_future_warning(
+        self, channel_idxs: list[int] | np.ndarray | None, kwargs: dict
+    ) -> None:
         """Handle FutureWarning and auto-ECG-peak resolution for gating/wavelet_denoising.
 
         Handle FutureWarning and auto-ECG-peak resolution for gating/wavelet_denoising.
         """
-        if all(kwargs.get("ecg_peakset_name", "ecg") not in channel.peaks for channel in self.channels) or any(
-            key in kwargs for key in ["ecg_peak_idxs", "ecg_raw", "bp_filter", "overwrite"]
+        if all(
+            kwargs.get("ecg_peakset_name", "ecg") not in channel.peaks
+            for channel in self.channels
+        ) or any(
+            key in kwargs
+            for key in ["ecg_peak_idxs", "ecg_raw", "bp_filter", "overwrite"]
         ):
             warnings.warn(
                 "\n".join(
@@ -1959,11 +2186,13 @@ class EmgDataGroup(TimeSeriesGroup):
     def _resolve_ecg_source(self, kwargs: dict) -> dict:
         """Resolve the ECG source for peak detection, updating kwargs in place."""
         if kwargs.get("ecg_raw") is not None:
-            logger.warning("Provided raw ECG used for ECG peak detection.")
+            if self.verbose:
+                logger.warning("Provided raw ECG used for ECG peak detection.")
         elif self.ecg_idx is not None:
             kwargs["ecg_raw"] = self[self.ecg_idx]["raw"]
-            logger.warning("Set ECG channel used for ECG peak detection.")
-        else:
+            if self.verbose:
+                logger.warning("Set ECG channel used for ECG peak detection.")
+        elif self.verbose:
             logger.warning("Channel raw signals used for ECG peak detection.")
         return kwargs
 
@@ -2004,29 +2233,40 @@ class VentilatorDataGroup(TimeSeriesGroup):
         fs: int | None = None,
         labels: list[str] | None = None,
         units: list[str] | None = None,
+        verbose: bool = True,
     ) -> None:
-        super().__init__(y_raw, t_data=t_data, fs=fs, labels=labels, units=units)
+        super().__init__(
+            y_raw, t_data=t_data, fs=fs, labels=labels, units=units, verbose=verbose
+        )
 
         if labels is None:
             labels = []
 
-        self.p_vent_idx: int | None = next((labels.index(label) for label in ["Paw", "Pvent"] if label in labels), None)
+        self.p_vent_idx: int | None = next(
+            (labels.index(label) for label in ["Paw", "Pvent", "P"] if label in labels),
+            None,
+        )
         self.f_idx: int | None = labels.index("F") if "F" in labels else None
-        self.v_vent_idx: int | None = labels.index("Vvent") if "Vvent" in labels else None
+        self.v_vent_idx: int | None = next(
+            (labels.index(label) for label in ["Vvent", "V"] if label in labels), None
+        )
 
-        if self.p_vent_idx is not None:
-            logger.warning("Auto-detected Pvent channel from labels.")
-        if self.f_idx is not None:
-            logger.warning("Auto-detected Flow channel from labels.")
-        if self.v_vent_idx is not None:
-            logger.warning("Auto-detected Volume channel from labels.")
+        if self.verbose:
+            if self.p_vent_idx is not None:
+                logger.warning("Auto-detected Pvent channel from labels.")
+            if self.f_idx is not None:
+                logger.warning("Auto-detected Flow channel from labels.")
+            if self.v_vent_idx is not None:
+                logger.warning("Auto-detected Volume channel from labels.")
 
         if self.p_vent_idx is not None and self.v_vent_idx is not None:
             self.find_peep(self.p_vent_idx, self.v_vent_idx)
         else:
             self.peep = None
 
-    def find_peep(self, pressure_idx: int | None, volume_idx: int | None) -> None:
+    def find_peep(
+        self, pressure_idx: int | None = None, volume_idx: int | None = None
+    ) -> None:
         """Calculate PEEP.
 
             Calculate PEEP as the median value of p_vent at end-expiration.
@@ -2084,7 +2324,7 @@ class VentilatorDataGroup(TimeSeriesGroup):
             raise ValueError(msg)
 
         peak_idxs = evt.find_occluded_breaths(**kwargs)
-        peak_idxs = peak_idxs + kwargs["start_idx"]
+        peak_idxs = peak_idxs + kwargs.get("start_idx", 0)
         self.channels[pressure_idx].set_peaks(
             signal=self.channels[pressure_idx]["raw"],
             peak_idxs=peak_idxs,
@@ -2093,7 +2333,11 @@ class VentilatorDataGroup(TimeSeriesGroup):
         )
 
     def find_ventilator_peaks(
-        self, channel_io: tuple[str | int, str | int | list] | None = None, overwrite: bool = False, **kwargs
+        self,
+        channel_io: tuple[str | int, str | int | list] | None = None,
+        overwrite: bool = False,
+        peak_set_name: str = "ventilator_breaths",
+        **kwargs,
     ) -> None:
         """Detect breath-related peaks in a specified ventilator signal.
 
@@ -2106,6 +2350,7 @@ class VentilatorDataGroup(TimeSeriesGroup):
                 in the second element. If None, the volume or pressure channel is
                 used as input; in absence of these, the first channel is used.
             overwrite (bool): Whether to overwrite existing peak set.
+            peak_set_name (str): Name of the peak set to store detected peaks.
             **kwargs: Additional keyword arguments passed to the peak detection
                 function.
 
@@ -2127,7 +2372,9 @@ class VentilatorDataGroup(TimeSeriesGroup):
             raise ValueError(msg) from e
 
         if channel_io is None:
-            default_o = [idx for idx in (self.p_vent_idx, self.v_vent_idx) if idx is not None]
+            default_o = [
+                idx for idx in (self.p_vent_idx, self.v_vent_idx) if idx is not None
+            ]
             channel_keys_o = self._resolve_channels(None, default=default_o)
         else:
             try:
@@ -2157,6 +2404,6 @@ class VentilatorDataGroup(TimeSeriesGroup):
             self.channels[_channel_key].set_peaks(
                 signal=signal_raw,
                 peak_idxs=peak_idxs,
-                peak_set_name="ventilator_breaths",
+                peak_set_name=peak_set_name,
                 overwrite=overwrite,
             )

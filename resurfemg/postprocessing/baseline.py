@@ -97,10 +97,14 @@ def slopesum_baseline(
     y_baseline_series = pd.Series(rolling_baseline)
     # Ensure rolling results are concrete numpy ndarrays (not ExtensionArray)
     y_baseline_std = np.asarray(
-        y_baseline_series.rolling(window_s, min_periods=1, center=True).std().to_numpy(dtype=float)
+        y_baseline_series.rolling(window_s, min_periods=1, center=True)
+        .std()
+        .to_numpy(dtype=float)
     )
     y_baseline_mean = np.asarray(
-        y_baseline_series.rolling(window_s, min_periods=1, center=True).mean().to_numpy(dtype=float)
+        y_baseline_series.rolling(window_s, min_periods=1, center=True)
+        .mean()
+        .to_numpy(dtype=float)
     )
 
     # 2.b. Augmented signal: signal_env + abs([dsignal_env/dt]_smoothed)

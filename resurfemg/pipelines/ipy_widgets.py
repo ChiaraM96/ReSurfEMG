@@ -25,7 +25,11 @@ from ipywidgets import Button, Checkbox, Dropdown, HBox, Text, VBox
 from scipy import io as sio
 
 from resurfemg.data_connector.adicht_reader import AdichtReader
-from resurfemg.data_connector.data_classes import EmgDataGroup, TimeSeriesGroup, VentilatorDataGroup
+from resurfemg.data_connector.data_classes import (
+    EmgDataGroup,
+    TimeSeriesGroup,
+    VentilatorDataGroup,
+)
 from resurfemg.data_connector.file_discovery import filepaths_dict, find_files
 from resurfemg.data_connector.tmsisdk_lite import Poly5Reader
 
@@ -228,7 +232,7 @@ class CheckBoxTree(anywidget.AnyWidget):
         rebuild();
     }
     export default { render };
-    """
+    """  # noqa: E501
 
     _css = """
     details { margin: 4px 0; padding-left: 12px; }
@@ -239,50 +243,59 @@ class CheckBoxTree(anywidget.AnyWidget):
     details[open] > .branch-summary::before { transform: rotate(90deg); }
     .branch-cb { cursor: pointer; flex-shrink: 0; }
     .file-row { display: flex; gap: 8px; padding: 2px 0 2px 16px; align-items: center; }
-    """
+    """  # noqa: E501
 
     tree_data = traitlets.Dict({}).tag(sync=True)
     checked_files = traitlets.List([]).tag(sync=True)
     file_types = traitlets.Dict({}).tag(sync=True)
 
 
+data_groups: dict[str, tuple[str, ...]] = {
+    "EMG": ("emg", "exg"),
+    "Ventilator": ("vent", "flow", "pressure", "rip", "draeger", "volume"),
+    "Other": (),
+    "Both": ("all", "both"),
+}
+
+default_labels: dict[str, tuple[str, ...]] = {
+    "EMG": ("ECG", "EMGdi", "EMGin"),
+    "Ventilator": ("Flow", "Pressure", "Volume"),
+    "Other": (),
+    "Both": (),
+}
+
+default_units: dict[str, tuple[str, ...]] = {
+    "EMG": ("mV", "uV", "uV"),
+    "Ventilator": ("L/min", "cmH2O", "mL"),
+    "Other": (),
+    "Both": (),
+}
+
+supported_extensions: tuple[str, ...] = (".Poly5", ".adicht", ".mat")
+
+
 class DatasetSelector:
     """A widget to select patients and their corresponding files.
 
-    Description: This class provides a user interface for selecting patients and their associated files.
-    It allows users to choose a patient from a dropdown menu and then select specific files related to that patient
+    Description: This class provides a user interface for selecting
+    patients and their associated files. It allows users to choose a patient
+    from a dropdown menu and then select specific files related to that patient
     using a tree of checkboxes. The selected files can be imported for further analysis.
     """
 
-    data_groups: ClassVar[dict[str, tuple[str, ...]]] = {
-        "EMG": ("emg", "exg"),
-        "Ventilator": ("vent", "flow", "pressure", "rip", "draeger"),
-        "Other": (),
-        "Both": ("all", "both"),
-    }
-
-    default_labels: ClassVar[dict[str, tuple[str, ...]]] = {
-        "EMG": ("ECG", "EMGdi", "EMGin"),
-        "Ventilator": ("Flow", "Pressure", "RIP"),
-        "Other": (),
-        "Both": (),
-    }
-
-    default_units: ClassVar[dict[str, tuple[str, ...]]] = {
-        "EMG": ("mV", "uV", "uV"),
-        "Ventilator": ("L/min", "cmH2O", "mL"),
-        "Other": (),
-        "Both": (),
-    }
-
-    supported_extensions: ClassVar[tuple[str, ...]] = (".Poly5", ".adicht", ".mat")
-
-    def __init__(self, root_directory: str | Path | None = None, patient_regex: str = r"^([Pp]_?\d+)"):
-        self.root_directory = root_directory if root_directory is not None else Path.cwd()
+    def __init__(
+        self,
+        root_directory: str | Path | None = None,
+        patient_regex: str = r"^([Pp]_?\d+)",
+    ):
+        self.root_directory = (
+            root_directory if root_directory is not None else Path.cwd()
+        )
         self._trees: dict[str, CheckBoxTree] = {}
         self._complete_regex(patient_regex)
         self._compiled_name_types = {
-            category: re.compile("|".join(patterns), re.IGNORECASE) for category, patterns in self.data_groups.items()
+            category: re.compile("|".join(patterns), re.IGNORECASE)
+            for category, patterns in data_groups.items()
         }
         self.widget = self._create_widget()
         self.data_emg: EmgDataGroup
@@ -299,12 +312,12 @@ class DatasetSelector:
             "("
             + regex
             + r")[/\\](?:.+[/\\])?[^/\\]+\.(?:"
-            + "|".join(ext.lstrip(".") for ext in self.supported_extensions)
+            + "|".join(ext.lstrip(".") for ext in supported_extensions)
             + ")$"
         )
 
     def _dropdown_changed(self, _dropdown: widgets.Dropdown) -> None:
-        """Update the file selection checkboxes when the patient selection dropdown changes.
+        """Update the file selection checkboxes on patient selection dropdown change.
 
         Args:
             dropdown (widgets.Dropdown): The patient selection dropdown widget.
@@ -315,7 +328,7 @@ class DatasetSelector:
         self._get_selected()
 
     def _build_tree_data(self, node: dict) -> dict:
-        """Convert dataset_dict subtree (leaves=lists) to CheckBoxTree tree_data (leaves=dtype strings).
+        """Convert dataset_dict subtree (lists) to CheckBoxTree tree_data (strings).
 
         filepaths_dict produces three kinds of values:
           - empty list  → the key itself is a file (depth-2 path)
@@ -343,7 +356,7 @@ class DatasetSelector:
         self.selected_types = [_tree.file_types[t] for t in _tree.checked_files]
 
     def _create_widget(self) -> None:
-        """Build the patient dropdown, per-patient CheckBoxTree stack, and import button."""
+        """Build the per-patient dropdown, CheckBoxTree stack, and import button."""
         self.files = find_files(self.root_directory)
         col = self.files["files"]
         col = [Path(c).parts for c in col if re.search(self.patient_regex, c)]
@@ -352,21 +365,35 @@ class DatasetSelector:
 
         self.patient_selector = widgets.Dropdown(options=ids)
 
-        self._trees = {_id: CheckBoxTree(tree_data=self._build_tree_data(self.dataset_dict[_id])) for _id in ids}
+        self._trees = {
+            _id: CheckBoxTree(tree_data=self._build_tree_data(self.dataset_dict[_id]))
+            for _id in ids
+        }
 
         self.file_selector = widgets.Stack(
             [self._trees[_id] for _id in ids],
             selected_index=0,
         )
-        widgets.jslink((self.patient_selector, "index"), (self.file_selector, "selected_index"))
+        widgets.jslink(
+            (self.patient_selector, "index"), (self.file_selector, "selected_index")
+        )
 
         self.import_button = widgets.Button(
             description="Import selected files",
             button_style="success",
             layout=widgets.Layout(width="auto", margin="5px"),
         )
-        self.import_button.on_click(lambda b: asyncio.ensure_future(self._import_selected_files(b)))
-        display(widgets.VBox([widgets.HBox([self.patient_selector, self.import_button]), self.file_selector]))
+        self.import_button.on_click(
+            lambda b: asyncio.ensure_future(self._import_selected_files(b))
+        )
+        display(
+            widgets.VBox(
+                [
+                    widgets.HBox([self.patient_selector, self.import_button]),
+                    self.file_selector,
+                ]
+            )
+        )
 
     async def _import_selected_files(self, _button: widgets.Button) -> None:
         """Import the selected files for the selected patient.
@@ -377,14 +404,17 @@ class DatasetSelector:
         self._get_selected()
         _data = None
         _id = str(self.selected_id)
-        _selected = {_id: dict(zip(self.selected_files, self.selected_types, strict=False))}
+        _selected = {
+            _id: dict(zip(self.selected_files, self.selected_types, strict=False))
+        }
         for _file, _type in list(_selected[_id].items()):
             file = str(self.root_directory / Path(_id) / Path(_file))
             _extension = Path(file).suffix
             logger.info(_extension)
             if _extension in [".Poly5", ".adicht"]:
                 _data = self._get_nonmat_data(
-                    Poly5Reader(file) if _extension == ".Poly5" else AdichtReader(file), _type
+                    Poly5Reader(file) if _extension == ".Poly5" else AdichtReader(file),
+                    _type,
                 )
                 if _type == "EMG" and isinstance(_data, EmgDataGroup):
                     self.data_emg = _data
@@ -402,28 +432,44 @@ class DatasetSelector:
             logger.info("data imported from %s file!", file)
 
             # now, we have the container, which is different for each extension type.
-            # .mat already has the TimeSeriesGroup objects, while the other two still need converting.
+            # .mat already has the TimeSeriesGroup objects,
+            # while the other two still need converting.
 
+    @staticmethod
     def _get_nonmat_data(
-        self, data: Poly5Reader | AdichtReader, data_type: str
+        data: Poly5Reader | AdichtReader, data_type: str, verbose: bool = True
     ) -> EmgDataGroup | VentilatorDataGroup | TimeSeriesGroup:
         # Load the EMG and ventilator data recordings from the selected folders.
         if not hasattr(data, "samples") or not hasattr(data, "sample_rate"):
-            msg = "The provided data does not contain the required attributes 'samples' and 'sample_rate'."
+            msg = (
+                "The provided data does not contain the required attributes "
+                "'samples' and 'sample_rate'."
+            )
             raise ValueError(msg)
         if isinstance(data, Poly5Reader):
-            y = data.samples[: data.num_samples] if hasattr(data, "num_samples") else data.samples[:]
+            y = (
+                data.samples[: data.num_samples]
+                if hasattr(data, "num_samples")
+                else data.samples[:]
+            )
             fs = data.sample_rate if hasattr(data, "sample_rate") else None
             n_channels = y.shape[0]
             labels = cast(
                 "list[str]",
                 (
                     data.ch_names[:n_channels]
-                    if hasattr(data, "channel_labels")
-                    else (self.default_labels[data_type][:n_channels])
+                    if hasattr(data, "ch_names")
+                    else (default_labels[data_type][:n_channels])
                 ),
             )
-            units = data.ch_unit_names[:n_channels] if hasattr(data, "channel_units") else n_channels * ["uV"]
+            units = cast(
+                "list[str]",
+                (
+                    data.ch_unit_names[:n_channels]
+                    if hasattr(data, "ch_unit_names")
+                    else (default_units[data_type][:n_channels])
+                ),
+            )
         elif isinstance(data, AdichtReader):
             # Extract the ventilator data
             select_channel_idxs = [*range(len(data.adicht_data.channels))]
@@ -439,12 +485,32 @@ class DatasetSelector:
             labels = data.get_labels(select_channel_idxs)
             units = data.get_units(select_channel_idxs, record_idx)
         if data_type == "EMG":
-            return EmgDataGroup(y, fs=fs, labels=labels, units=units)
+            return EmgDataGroup(y, fs=fs, labels=labels, units=units, verbose=verbose)
         if data_type == "Ventilator":
-            return VentilatorDataGroup(y, fs=fs, labels=labels, units=units)
-        return TimeSeriesGroup(y, fs=fs, labels=labels, units=units)
+            return VentilatorDataGroup(
+                y, fs=fs, labels=labels, units=units, verbose=verbose
+            )
+        return TimeSeriesGroup(y, fs=fs, labels=labels, units=units, verbose=verbose)
 
-    async def _wait_for_matlab_import_button(self, _picker: CustomizeMatlabImport) -> None:
+    @staticmethod
+    def get_data(
+        data: Poly5Reader | AdichtReader, data_type: str, verbose: bool = False
+    ) -> EmgDataGroup | VentilatorDataGroup | TimeSeriesGroup | None:
+        """Get the imported data.
+
+        Returns:
+            EmgDataGroup | VentilatorDataGroup | TimeSeriesGroup | None:
+                The imported data.
+        """
+        return (
+            DatasetSelector._get_nonmat_data(data, data_type, verbose)
+            if data is not None
+            else None
+        )
+
+    async def _wait_for_matlab_import_button(
+        self, _picker: CustomizeMatlabImport
+    ) -> None:
         await _wait_for_change(_picker.import_button, "value")
 
     async def _import_matlab_file(
@@ -457,7 +523,9 @@ class DatasetSelector:
 
     def _update_data_type(self, _dropdown: widgets.Dropdown) -> None:
         self._get_selected()
-        self.dataset_dict[self.selected_id][_dropdown.tooltip.replace("Data type for ", "")] = _dropdown.value
+        self.dataset_dict[self.selected_id][
+            _dropdown.tooltip.replace("Data type for ", "")
+        ] = _dropdown.value
 
     def _create_checkbox(self, description: str, _type: str) -> widgets.HBox:
         """Create a checkbox widget and a dropdown widget for selecting the data type.
@@ -498,7 +566,12 @@ class DatasetSelector:
             str: The guessed data type ("EMG", "Ventilator", or "Other").
         """
         _type = next(
-            (cat for cat, pattern in self._compiled_name_types.items() if pattern.search(str(file_name))), None
+            (
+                cat
+                for cat, pattern in self._compiled_name_types.items()
+                if pattern.search(str(file_name))
+            ),
+            None,
         )
         return _type if _type is not None else "Other"
 
@@ -537,9 +610,12 @@ def _check_defaults(
             raise IndexError(msg_0)
         options_bool = []
         for value in default_select:
-            if value is not None and not isinstance(value, name_types_regex[default_type]):
+            if value is not None and not isinstance(
+                value, name_types_regex[default_type]
+            ):
                 msg_0 = (
-                    f"default_{default_type}_select values need to be {name_types_regex[default_type].__name__} or None"
+                    f"default_{default_type}_select values need to be "
+                    f"{name_types_regex[default_type].__name__} or None"
                 )
                 raise TypeError(msg_0)
             options_bool.append(value is not None)
@@ -579,7 +655,9 @@ def file_select(
     default_value_select, value_options_bool = _check_defaults(
         default_value_select, folder_levels, default_type="value"
     )
-    default_idx_select, idx_options_bool = _check_defaults(default_idx_select, folder_levels, default_type="idx")
+    default_idx_select, idx_options_bool = _check_defaults(
+        default_idx_select, folder_levels, default_type="idx"
+    )
 
     button_list = []
     btn_dict = {}
@@ -591,7 +669,9 @@ def file_select(
         button_list.append(_btn)
         btn_dict[folder_level] = _btn
 
-    prev_values: list[str | None] = cast("list[str | None]", [None] * len(folder_levels))
+    prev_values: list[str | None] = cast(
+        "list[str | None]", [None] * len(folder_levels)
+    )
 
     @widgets.interact(**btn_dict)
     def _update_select(**kwargs) -> None:
@@ -621,7 +701,10 @@ def _update_dropdowns(
     default_value_select: list[str] | None,
     default_idx_select: list[int] | None,
 ) -> None:
-    btn_changed = [button_list[_idx].value != prev_values[_idx] for _idx in range(len(folder_levels))]
+    btn_changed = [
+        button_list[_idx].value != prev_values[_idx]
+        for _idx in range(len(folder_levels))
+    ]
 
     for idx, dict_key in enumerate(btn_dict):
         btn_idx = folder_levels.index(dict_key)
@@ -630,7 +713,10 @@ def _update_dropdowns(
         if idx == 0:
             filter_files = files
         else:
-            bool_list = [button_list[_idx].value == files[folder_levels[_idx]].values for _idx in range(idx)]
+            bool_list = [
+                button_list[_idx].value == files[folder_levels[_idx]].values
+                for _idx in range(idx)
+            ]
             filter_files = files[np.all(np.array(bool_list), 0)]
 
         col_values: np.ndarray = filter_files[dict_key].to_numpy()
@@ -642,7 +728,11 @@ def _update_dropdowns(
             value = _btn.value if _btn.value in options else options[0]
             if any(btn_changed[:btn_idx]) or prev_values[btn_idx] is None:
                 if value_options_bool[btn_idx] and default_value_select is not None:
-                    value = default_value_select[btn_idx] if default_value_select[btn_idx] in options else options[0]
+                    value = (
+                        default_value_select[btn_idx]
+                        if default_value_select[btn_idx] in options
+                        else options[0]
+                    )
                 elif idx_options_bool[btn_idx] and default_idx_select is not None:
                     value = (
                         options[default_idx_select[btn_idx]]
@@ -656,15 +746,17 @@ def _update_dropdowns(
 class CustomizeMatlabImport:
     """A widget to customize the import of .mat files.
 
-    The widget identifies the keys in the .mat file and classifies them according to their type
-    (time series, descriptors, params) and group (EMG, ventilator, other). The user can then select which keys to import
+    The widget identifies the keys in the .mat file and classifies them
+    according to their type (time series, descriptors, params)
+    and group (EMG, ventilator, other). The user can then select which keys to import
     how to name them, and which signal group they belong to (EMG, ventilator, other).
-    The widget then builds the EmgDataGroup, VentilatorDataGroup and TimeSeriesGroup objects accordingly.
+    The widget then builds the EmgDataGroup, VentilatorDataGroup and
+    TimeSeriesGroup objects accordingly.
     """
 
     data_groups: ClassVar[dict[str, tuple[str, ...]]] = {
         "EMG": ("emg", "exg"),
-        "ventilator": ("vent", "flow", "pressure", "rip"),
+        "ventilator": ("vent", "flow", "pressure", "rip", "volume"),
         "other": (),
     }
 
@@ -686,9 +778,12 @@ class CustomizeMatlabImport:
     def __init__(self, mat_file: str | Path | None = None):
         self.mat_dict: dict = sio.loadmat(mat_file, mdict=None, appendmat=False)
         self.keys = [key for key in self.mat_dict if not key.startswith("__")]
-        self.key_mapping: dict[str, dict[Literal["Type", "Group", "Contains"] | None, str | None]] = {}
+        self.key_mapping: dict[
+            str, dict[Literal["Type", "Group", "Contains"] | None, str | None]
+        ] = {}
         self._compiled_groups = {
-            category: re.compile("|".join(patterns), re.IGNORECASE) for category, patterns in self.data_groups.items()
+            category: re.compile("|".join(patterns), re.IGNORECASE)
+            for category, patterns in data_groups.items()
         }
         self._compiled_name_types = {
             category: re.compile("|".join(patterns), re.IGNORECASE)
@@ -705,18 +800,22 @@ class CustomizeMatlabImport:
         display(self.import_button)
 
     def _map_keys(self) -> None:
-        """Map the keys in the .mat file to their type, group and content based on regex matching."""
+        """Regex maps the keys in the .mat file to their type, group and content."""
         for key in self.keys:
             self.key_mapping[str(key)] = {"Type": None, "Group": None, "Contains": None}
-            _num_type_check = isinstance(self.mat_dict[key], np.ndarray) and np.issubdtype(
+            _num_type_check = isinstance(
+                self.mat_dict[key], np.ndarray
+            ) and np.issubdtype(
                 self.mat_dict[key].dtype, np.number
-            )  # check if the key corresponds to a numerical array, which is required for time series and params types
+            )  # check if the key corresponds to a numerical array,
+            # which is required for time series and params types
             if (
                 self.mat_dict[key].shape
                 == (
                     1,
                     1,
-                )  # check if the key corresponds to a single value, which is required for params type
+                )  # check if the key corresponds to a single value,
+                # which is required for params type
                 and _num_type_check
             ):
                 self.key_mapping[str(key)]["Type"] = "params"
@@ -726,7 +825,11 @@ class CustomizeMatlabImport:
                 self.key_mapping[str(key)]["Type"] = "descriptors"
 
             self.key_mapping[str(key)]["Group"] = next(
-                (group for group, pattern in self._compiled_groups.items() if pattern.search(key)),
+                (
+                    group
+                    for group, pattern in self._compiled_groups.items()
+                    if pattern.search(key)
+                ),
                 None,
             )
 
@@ -735,11 +838,17 @@ class CustomizeMatlabImport:
                 continue
             # check for Contains given the key type
             _match = next(
-                (pattern.search(key) for _, pattern in self._compiled_name_types.items() if pattern.search(key)),
+                (
+                    pattern.search(key)
+                    for _, pattern in self._compiled_name_types.items()
+                    if pattern.search(key)
+                ),
                 None,
             )
 
-            self.key_mapping[str(key)]["Contains"] = _match.group(0) if _match is not None else None
+            self.key_mapping[str(key)]["Contains"] = (
+                _match.group(0) if _match is not None else None
+            )
 
     def _picker(self, data_type: str, key: str) -> HBox:
         """Create a picker for a given key in the .mat file.
@@ -749,7 +858,11 @@ class CustomizeMatlabImport:
             key (str): The key for which to create a picker.
         """
         # key_group: EMG, ventilator, other.
-        key_group = self.key_mapping[key]["Group"] if self.key_mapping[key]["Group"] is not None else "other"
+        key_group = (
+            self.key_mapping[key]["Group"]
+            if self.key_mapping[key]["Group"] is not None
+            else "other"
+        )
         # key_type:
         key_type = (
             self.key_mapping[key]["Contains"]
@@ -757,14 +870,19 @@ class CustomizeMatlabImport:
             else ("other" if data_type != "time_series" else "y_raw")
         )
 
-        # Select whether to import the key or not. Default is True for EMG and ventilator groups, False for other group.
+        # Select whether to import the key or not.
+        # Default is True for EMG and ventilator groups, False for other group.
         import_checker = Checkbox(value=key_group != "other", description=key)
         # Name for the imported TimeSeriesGroup
         name_input = Text(value=key, description="Import as:")
-        # data_group_selector options: EMG (EMGDataGroup) or Ventilator (VentilatorDataGroup) or Other (TimeSeriesGroup)
-        data_group_selector = Dropdown(options=self.data_groups.keys(), description="in group:", value=key_group)
+        # data_group_selector options: EMG (EMGDataGroup) or Ventilator
+        # (VentilatorDataGroup) or Other (TimeSeriesGroup)  # noqa: ERA001
+        data_group_selector = Dropdown(
+            options=data_groups.keys(), description="in group:", value=key_group
+        )
         # type_picker options: if data_type is time_series: t_data, y_raw, other;
-        # if data_type is descriptors: labels, y_units, other; if data_type is params: fs, n_samp, n_channels, other
+        # if data_type is descriptors: labels, y_units, other; if data_type is params:
+        # fs, n_samp, n_channels, other
         type_picker = Dropdown(
             options=self.name_types_regex[data_type].keys(),
             description="containing:",
@@ -775,7 +893,9 @@ class CustomizeMatlabImport:
     def _create_pickers(self) -> VBox:
         pickers = {}
         for key, properties in self.key_mapping.items():
-            data_type = properties["Type"] if properties["Type"] is not None else "other"
+            data_type = (
+                properties["Type"] if properties["Type"] is not None else "other"
+            )
             pickers[key] = self._picker(str(data_type), str(key))
         return VBox(list(pickers.values()))
 
@@ -787,7 +907,8 @@ class CustomizeMatlabImport:
         # build a dataframe with the state of the pickers
         picker_state = pd.DataFrame(
             [
-                [row_child.children[0].description] + [child.value for child in row_child.children]
+                [row_child.children[0].description]
+                + [child.value for child in row_child.children]
                 for row_child in self.picker.children
             ],
             columns=["key", "import", "name", "group", "type"],
@@ -801,34 +922,56 @@ class CustomizeMatlabImport:
         # first, get the required arguments: the y_data
         _y_raw: np.ndarray | None = None
         _y_raw_keys = picker_state[
-            (picker_state["import"]) & (picker_state["group"] == group) & (picker_state["type"] == "y_raw")
+            (picker_state["import"])
+            & (picker_state["group"] == group)
+            & (picker_state["type"] == "y_raw")
         ]["key"].tolist()
-        # now, build the _y_raw 2D array, by concatenating the selected keys along the second axis (channels)
+        # now, build the _y_raw 2D array, by concatenating the selected keys
+        # along the second axis (channels)
         for key in _y_raw_keys:
             _y_temp = self.mat_dict[key]
             _y_temp = _y_temp if _y_temp.shape[0] > _y_temp.shape[1] else _y_temp.T
-            _y_raw = _y_temp if _y_raw is None else np.concatenate((_y_raw, _y_temp), axis=1)
+            _y_raw = (
+                _y_temp if _y_raw is None else np.concatenate((_y_raw, _y_temp), axis=1)
+            )
         if _y_raw is None:
-            msg = f"No y_raw data selected for {group} group. Skipping import for this group."
+            msg = (
+                f"No y_raw data selected for {group} group."
+                f"Skipping import for this group."
+            )
             logger.warning(msg)
             return
         # then, optional arguments: t_data, labels, y_units, fs, n_samp, n_channels
         # regarding the labels: the labels are for the CHANNELS, not the time series.
         # Ex: we may have multiple 2D time series ("EMG_raw" and "EMG_filtered"),
         # while the channels may be "diaphragm" and "intercostal".
-        # Only ONE raw time series is imported for each group; the others are imported as Other.
+        # Only ONE raw time series is imported for each group;
+        # the others are imported as Other.
         optionals = {}
         for arg in ["t_data", "labels", "y_units", "fs", "n_samp", "n_channels"]:
             _key = picker_state[
-                (picker_state["import"]) & (picker_state["group"] == group) & (picker_state["type"] == arg)
+                (picker_state["import"])
+                & (picker_state["group"] == group)
+                & (picker_state["type"] == arg)
             ]["key"].tolist()
             optionals[arg] = self.mat_dict[_key[0]].squeeze() if len(_key) > 0 else None
-        # Check that there's at least one argument of t_data or fs. if only one is present, generate the other one.
+        # Check that there's at least one argument of t_data or fs.
+        # if only one is present, generate the other one.
         # If both are missing, raise an error.
-        optionals["n_samp"] = optionals["n_samp"] if optionals["n_samp"] is not None else max(_y_raw.shape)
-        optionals["n_channels"] = optionals["n_channels"] if optionals["n_channels"] is not None else min(_y_raw.shape)
+        optionals["n_samp"] = (
+            optionals["n_samp"]
+            if optionals["n_samp"] is not None
+            else max(_y_raw.shape)
+        )
+        optionals["n_channels"] = (
+            optionals["n_channels"]
+            if optionals["n_channels"] is not None
+            else min(_y_raw.shape)
+        )
         if optionals["t_data"] is None and optionals["fs"] is None:
-            raise ValueError("At least one of t_data or fs must be provided for " + group + " data.")
+            raise ValueError(
+                "At least one of t_data or fs must be provided for " + group + " data."
+            )
         if optionals["t_data"] is None:
             optionals["t_data"] = np.arange(optionals["n_samp"]) / optionals["fs"]
         elif optionals["fs"] is None:
@@ -869,7 +1012,9 @@ class CustomizeMatlabImport:
                 fs=optionals["fs"],
             )
 
-    def get_groups(self) -> tuple[EmgDataGroup | None, VentilatorDataGroup | None, TimeSeriesGroup | None]:
+    def get_groups(
+        self,
+    ) -> tuple[EmgDataGroup | None, VentilatorDataGroup | None, TimeSeriesGroup | None]:
         """Return the imported data groups."""
         return self.get_emg_data(), self.get_ventilator_data(), self.get_other_data()
 

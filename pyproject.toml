@@ -79,7 +79,7 @@ testpaths = [
 ]
      
 [tool.pylance]
-pythonVersion = "3.9"   # check with minimum supported version
+pythonVersion = "3.10"   # check with minimum supported version
 
 [tool.coverage.report]
 include = [
@@ -93,7 +93,7 @@ omit = [
 
 [tool.ruff]
 output-format = "concise"
-line-length = 120
+line-length = 88
 extend-include = ["*.ipynb"]
 
 [tool.ruff.lint]
@@ -156,3 +156,15 @@ isort.known-first-party = ["resurfemg"]
     "SLF001",  # Private member accessed
 ]
 "docs/*" = ["ALL"]
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+#warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+check_untyped_defs = true
+no_implicit_reexport = true
+warn_redundant_casts = true
+warn_unused_ignores = true

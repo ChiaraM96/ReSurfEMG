@@ -1,5 +1,5 @@
 {
-    "python.defaultInterpreterPath": "C:\\.venvM3RESP\\Scripts\\python.exe",
+    "python.defaultInterpreterPath": "C:\\Users\\ManinettiC\\Documents\\ReSurfEMG\\venvReSurfEMG\\Scripts\\python.exe",
     "python.terminal.activateEnvironment": true,
     "python.terminal.activateEnvInCurrentTerminal": true,
 
@@ -16,6 +16,34 @@
     "python.testing.pytestArgs": [
         "tests"
     ],
-    "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true
+    "python.testing.unittestEnabled": true,
+    "python.testing.pytestEnabled": true,
+    "workbench.preferredLightColorTheme": "Tomorrow Night Eighties",
+    "workbench.preferredDarkColorTheme": "Catppuccin Latte",
+    "window.zoomLevel": -0.28133422777602873,
+    "editor.semanticTokenColorCustomizations": {
+
+    },
+    "dataWrangler.defaultViewingFilterOptions": "basic",
+    "dataWrangler.outputRenderer.pagination.defaultSize": 10,
+    "dataWrangler.experiments.fastCsvParsing": false,
+    "dataWrangler.experiments.autoDetectCsvDelimiter": false,
+    "dataWrangler.debug": true,
+    "dataWrangler.experiments.copilot.enabled": false,
+    "dataWrangler.columnInsights.displayOnOpen": true,
+    "dataWrangler.outputRenderer.enabledTypes": {
+        "pandas.Series": false,
+        "pandas.core.series.Series": false
+    },
+    "jupyter.askForKernelRestart": false,
+    "jupyter.exportWithOutputEnabled": false,
+    "jupyter.interactiveWindow.textEditor.executeSelection": false,
+    "jupyter.showVariableViewWhenDebugging": true,
+    "jupyter.themeMatplotlibPlots": true,
+    "notebook.outline.showCodeCells": true,
+    "editor.wordWrap": "on",
+    "editor.defaultFormatter": "ms-python.black-formatter",
+    "python.analysis.inlayHints.callArgumentNames": "partial",
+    "python.analysis.inlayHints.functionReturnTypes": false,
+    "notebook.defaultFormatter": "ms-python.black-formatter",
 }
