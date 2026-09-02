@@ -1,2 +1,7 @@
+# -*- coding: utf-8 -*-
+
 # Import the submodules
-from resurfemg.preprocessing import ecg_removal, envelope, filtering  # noqa: F401
+from . import ecg_removal
+from . import envelope
+from . import filtering
+from . import pneumatic
