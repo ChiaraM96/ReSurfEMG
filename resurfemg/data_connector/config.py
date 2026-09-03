@@ -54,7 +54,8 @@ def convert_to_os_path(
 
 
 def find_project_root(
-        current_dir=Path.cwd(), marker_file=None, prefer_build_markers=True):
+    current_dir=Path.cwd(), marker_file=None, prefer_build_markers=True
+):
     """
     Walks upward from `current_dir` to find a plausible Python project root.
     Returns the path if found, else None. If `marker_file` is provided,
@@ -80,16 +81,21 @@ def find_project_root(
         vcs_markers = set()
         prefer_build_markers = True
     else:
-        build_markers = {"pyproject.toml", "setup.cfg", "setup.py",
-                         "poetry.lock", "Pipfile", "requirements.txt",
-                         "tox.ini"}
+        build_markers = {
+            "pyproject.toml",
+            "setup.cfg",
+            "setup.py",
+            "poetry.lock",
+            "Pipfile",
+            "requirements.txt",
+            "tox.ini",
+        }
         vcs_markers = {".git"}
 
     candidate_by_priority = None
 
     for current in [start, *start.parents]:
-        items = ({p.name for p in current.iterdir()}
-                 if current.exists() else set())
+        items = {p.name for p in current.iterdir()} if current.exists() else set()
 
         # Build-markers = Check intersection between items and build markers
         if prefer_build_markers and items & build_markers:
@@ -139,8 +145,7 @@ class Config:
 
     required_directories: ClassVar[list[str]] = ["root_data"]
 
-    def __init__(self, location=None, configure=False, verbose=False,
-                 force=False):
+    def __init__(self, location=None, configure=False, verbose=False, force=False):
         """
         :param location: Path to the configuration file.
         :type location: str
@@ -163,26 +168,22 @@ class Config:
         _path = self.load(location, verbose=verbose)
         self.parse_paths(_path)
         if configure:
-            print(f'Created config. See and edit it at:\n {_path}\n')
+            print(f"Created config. See and edit it at:\n {_path}\n")
         if verbose or configure:
-            print('The following name-path combinations are configured:')
+            print("The following name-path combinations are configured:")
             self.print_config()
         self.validate(_path, force=force)
 
     def usage(self) -> str:
         """Provide feedback if the paths are not configured or not configured correctly.
 
-        It contains instructions on how to configure the paths.
+                It contains instructions on how to configure the paths.
 
-        Returns:
-            str: Instructions on how to configure the paths.
+                Returns:
+                    str: Instructions on how to configure the paths.
+        --------------------------------------------------------------------
         """
-        Provide feedback if the paths are not configured or not configured
-        correctly. It contains instructions on how to configure the paths.
-        -----------------------------------------------------------------------
-        """
-        return textwrap.dedent(
-            '''
+        return textwrap.dedent("""
             At initialization, the Config class looks for a configuration
             file named "config.json" at 'location' (if specified), or
             in one of the following locations (in search order):
@@ -208,16 +209,14 @@ class Config:
                 ```
                 Config.config_file_help()
                 ```
-            '''
-        ).format(convert_to_os_path('\n'.join(self.default_locations)))
+            """).format(convert_to_os_path("\n".join(self.default_locations)))
 
     def config_file_help(self):
         """
         This function provides help on how to set up the configuration file.
         -----------------------------------------------------------------------
         """
-        return textwrap.dedent(
-            '''
+        return textwrap.dedent("""
             The contents of "config.json" should specify at least the
             "root_data" directory:
 
@@ -235,7 +234,7 @@ class Config:
 
             You can override any individual directory (or subdirectory) by
             specifying it in the config.json file.
-            ''').format(convert_to_os_path('/path/to/storage'))
+            """).format(convert_to_os_path("/path/to/storage"))
 
     def get_default_layout(self):
         """
@@ -246,33 +245,33 @@ class Config:
         """
         if self.repo_root is not None:
             # In the ResurfEMG project, the test data is stored in ./test_data
-            test_path = os.path.join(self.repo_root, 'test_data')
+            test_path = os.path.join(self.repo_root, "test_data")
             if len(glob.glob(test_path)) == 1:
-                test_data_path = os.path.join(self.repo_root, 'test_data')
+                test_data_path = os.path.join(self.repo_root, "test_data")
             else:
-                test_data_path = '{}/test_data'
+                test_data_path = "{}/test_data"
 
             self.default_locations = (
-                os.path.join(os.getcwd(), 'config.json'),
-                os.path.join(self.repo_root, 'config.json'),
-                os.path.expanduser('~/.resurfemg/config.json'),
-                '/etc/resurfemg/config.json',
+                os.path.join(os.getcwd(), "config.json"),
+                os.path.join(self.repo_root, "config.json"),
+                os.path.expanduser("~/.resurfemg/config.json"),
+                "/etc/resurfemg/config.json",
             )
         else:
-            test_data_path = '{}/test_data'
+            test_data_path = "{}/test_data"
             self.default_locations = (
-                './config.json',
-                os.path.expanduser('~/.resurfemg/config.json'),
-                '/etc/resurfemg/config.json',
+                "./config.json",
+                os.path.expanduser("~/.resurfemg/config.json"),
+                "/etc/resurfemg/config.json",
             )
         default_layout = {
-                'root_data': '{}/not_pushed',
-                'test_data': test_data_path,
-                'patient_data': '{}/patient_data',
-                'simulated_data': '{}/simulated',
-                'preprocessed_data': '{}/preprocessed',
-                'output_data': '{}/output',
-            }
+            "root_data": "{}/not_pushed",
+            "test_data": test_data_path,
+            "patient_data": "{}/patient_data",
+            "simulated_data": "{}/simulated",
+            "preprocessed_data": "{}/preprocessed",
+            "output_data": "{}/output",
+        }
         return default_layout
 
     def load(self, location, verbose=False):
@@ -290,16 +289,14 @@ class Config:
         :type verbose: bool
         :raises ValueError: If the configuration file is not found.
         """
-        locations = (
-            [location] if location is not None else self.default_locations
-        )
+        locations = [location] if location is not None else self.default_locations
         _failed_paths = []
         for _path in locations:
             try:
                 with Path(path).open() as f:
                     self._raw = json.load(f)
                     if verbose:
-                        msg = f'Loaded config file from:\n{_path}'
+                        msg = f"Loaded config file from:\n{_path}"
                         logging.info(msg)
                     break
             except Exception as e:
@@ -309,13 +306,13 @@ class Config:
                     raise e
         else:
             msg = (
-                'Config file not found in any of the following locations:\n'
-                + '\n'.join(_failed_paths)
-                + '\n\n'
+                "Config file not found in any of the following locations:\n"
+                + "\n".join(_failed_paths)
+                + "\n\n"
                 + self.usage()
             )
             logging.error(msg)
-            raise ValueError('Config file not found.' + self.usage())
+            raise ValueError("Config file not found." + self.usage())
         return _path
 
     def parse_paths(self, _path):
@@ -328,21 +325,22 @@ class Config:
             if directory not in self._raw:
                 raise ValueError(
                     f'Missing required directory "{directory}" in config file.'
-                    + '\nThe config file was loaded from:\n '
-                    + f'{_path}\n'
-                    + self.config_file_help())
+                    + "\nThe config file was loaded from:\n "
+                    + f"{_path}\n"
+                    + self.config_file_help()
+                )
 
         # Convert all paths to OS readable paths.
-        root = self._raw.get('root_data')
+        root = self._raw.get("root_data")
         root = convert_to_os_path(root)
-        config_path = os.path.abspath(_path.replace('config.json', ''))
-        if isinstance(root, str) and root.startswith('.'):
-            root = root.replace('.', config_path, 1)
+        config_path = os.path.abspath(_path.replace("config.json", ""))
+        if isinstance(root, str) and root.startswith("."):
+            root = root.replace(".", config_path, 1)
         self._loaded = dict(self._raw)
-        self._loaded['root_data'] = root
+        self._loaded["root_data"] = root
         for key, value in self._loaded.items():
-            if isinstance(value, str) and value.startswith('.'):
-                new_value = value.replace('.', root, 1)
+            if isinstance(value, str) and value.startswith("."):
+                new_value = value.replace(".", root, 1)
                 self._loaded[key] = convert_to_os_path(new_value)
                 self.relative_paths.append(key)
             else:
@@ -353,8 +351,7 @@ class Config:
         missing = set(self.default_layout.keys()) - set(self._raw.keys())
         self.missing_paths = list(missing)
         for m in missing:
-            self._loaded[m] = convert_to_os_path(
-                self.default_layout[m].format(root))
+            self._loaded[m] = convert_to_os_path(self.default_layout[m].format(root))
 
     def validate(self, _path, force=False):
         """
@@ -367,19 +364,21 @@ class Config:
             if not os.path.isdir(self._loaded[req_dir]):
                 if force:
                     os.makedirs(self._loaded[req_dir])
-                    print('Created required directory at:\n '
-                          + f'{req_dir}: {self._loaded[req_dir]}\n')
+                    print(
+                        "Created required directory at:\n "
+                        + f"{req_dir}: {self._loaded[req_dir]}\n"
+                    )
                     continue
                 msg = (
-                    f'Required directory {req_dir} specified in the config '
-                    + 'file does not exist. Create it yourself or re-run with '
-                    + '`force=True` to create the root data directory at:\n '
-                    + f'{self._loaded[req_dir]}\n'
-                    + 'Alternatively, edit the config file at:\n '
-                    + f'{_path}\n')
+                    f"Required directory {req_dir} specified in the config "
+                    + "file does not exist. Create it yourself or re-run with "
+                    + "`force=True` to create the root data directory at:\n "
+                    + f"{self._loaded[req_dir]}\n"
+                    + "Alternatively, edit the config file at:\n "
+                    + f"{_path}\n"
+                )
                 wrapped = "\n".join(
-                    textwrap.fill(line, width=79)
-                    for line in msg.splitlines()
+                    textwrap.fill(line, width=79) for line in msg.splitlines()
                 )
                 logging.error(wrapped)
 
@@ -388,24 +387,26 @@ class Config:
         This function prints the current configuration.
         -----------------------------------------------------------------------
         """
-        print(79*'-')
+        print(79 * "-")
         print(f'  {"Name": <15}\t{"Path": <50}')
-        print(79*'-')
+        print(79 * "-")
         print(f'  {"root_data": <15}\t{self._loaded["root_data"]: <50}')
-        print(79*'-')
+        print(79 * "-")
         for key, value in self._loaded.items():
-            if key != 'root_data':
+            if key != "root_data":
                 if key in self.missing_paths:
-                    _rel_flag = '+ '
+                    _rel_flag = "+ "
                 else:
-                    _rel_flag = '* ' if key in self.relative_paths else '  '
-                print(_rel_flag + f'{key: <15}' + f'\t{value: <50}')
-        print(79*'-')
+                    _rel_flag = "* " if key in self.relative_paths else "  "
+                print(_rel_flag + f"{key: <15}" + f"\t{value: <50}")
+        print(79 * "-")
         if len(self.relative_paths) > 0:
-            print('* Path is defined relative to root_data.')
+            print("* Path is defined relative to root_data.")
         if self.missing_paths is not None and len(self.missing_paths) > 0:
-            print('+ Default entry is not defined and has been set'
-                  + ' according to default path.')
+            print(
+                "+ Default entry is not defined and has been set"
+                + " according to default path."
+            )
 
     def get_directory(self, directory: str, value: str | None = None) -> str:
         """Return the directory specified in the configuration file.
@@ -424,8 +425,10 @@ class Config:
         if value is None:
             if directory in self._loaded:
                 return self._loaded[directory]
-        print(f"Directory  \"{directory}\" not found in config.\n"
-              + "The following directories are configured:")
+        print(
+            f'Directory  "{directory}" not found in config.\n'
+            + "The following directories are configured:"
+        )
         self.print_config()
         return value
 
@@ -439,15 +442,14 @@ class Config:
 
     def setup_config(self, location=None, force=False):
         if location is not None:
-            base_path = os.path.abspath(
-                location.replace('config.json', ''))
+            base_path = os.path.abspath(location.replace("config.json", ""))
         elif self.repo_root is not None:
             base_path = self.repo_root
         else:
             base_path = os.getcwd()
 
         self.create_config_from_example(base_path, force=force)
-        return os.path.join(base_path, 'config.json')
+        return os.path.join(base_path, "config.json")
 
     def create_config_from_example(self, location: str, force=False):
         """
@@ -456,21 +458,20 @@ class Config:
         :param location: The location of the example file.
         :type location: str
         """
-        example_path = files("resurfemg").joinpath(
-            "data_connector/config_example.json")
-        config_path = os.path.join(location, 'config.json')
+        example_path = files("resurfemg").joinpath("data_connector/config_example.json")
+        config_path = os.path.join(location, "config.json")
         if os.path.isfile(config_path) and not force:
             raise ValueError(
-                f'Config file already exists at {config_path}.'
-                + ' Use `force=True` to overwrite.')
-        with open(example_path, 'r') as f:
+                f"Config file already exists at {config_path}."
+                + " Use `force=True` to overwrite."
+            )
+        with open(example_path, "r") as f:
             example = json.load(f)
         # Adjust root_path to an absolute path
-        if example['root_data'].startswith('.'):
-            example['root_data'] = os.path.join(
-                location, example['root_data'][2:])
+        if example["root_data"].startswith("."):
+            example["root_data"] = os.path.join(location, example["root_data"][2:])
         # Write the example config to the config path
-        with open(config_path, 'w') as f:
+        with open(config_path, "w") as f:
             json.dump(example, f, indent=4, sort_keys=False)
 
 
@@ -525,10 +526,16 @@ class PathSelector:
             value=(
                 str(selected_path)
                 if selected_path is not None
-                else (Config().get_directory(property_name) if property_name is not None else "")
+                else (
+                    Config().get_directory(property_name)
+                    if property_name is not None
+                    else ""
+                )
             ),
             placeholder="Enter path",
-            description=(self.property_name if self.property_name is not None else "Path:"),
+            description=(
+                self.property_name if self.property_name is not None else "Path:"
+            ),
             disabled=False,
             layout=Layout(width="100%"),
         )
@@ -574,10 +581,14 @@ class ConfigCreatorWidget:
 
     def __init__(self, config_path: str | Path | None = None):
 
-        self._config_file_path: Path = Path().cwd() / "config.json" if config_path is None else Path(config_path)
+        self._config_file_path: Path = (
+            Path().cwd() / "config.json" if config_path is None else Path(config_path)
+        )
         self.config: Config = Config(location=self._config_file_path)
         self._path_selectors = {
-            name: PathSelector(property_name=name, selected_path=self.config.get_directory(name))
+            name: PathSelector(
+                property_name=name, selected_path=self.config.get_directory(name)
+            )
             for name in cast("tuple[PropertyName, ...]", get_args(PropertyName))
         }
         self.save_button = widgets.Button(
