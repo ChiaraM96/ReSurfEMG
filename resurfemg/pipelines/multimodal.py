@@ -249,17 +249,40 @@ class MultimodalDataGroup:
                     linked_peak_set_name="Pocc",
                 )
         else:
-            for idx in self.emg_idx:
-                # link tidal peaks to the closest neural peaks
-                self.vent_timeseries[self.v_vent_idx].link_peak_set(
-                    peak_set_name="ventilator_breaths",
-                    t_reference_peaks=self.emg_timeseries[idx]
-                    .peaks["neural_breaths"]
-                    .peak_df["peak_idx"]
-                    .to_numpy()
-                    / self.emg_timeseries.param["fs"],
-                    linked_peak_set_name="neural_breaths",
+            emg_idx_sorted = [
+                self.emg_idx[i]
+                for i in np.argsort(
+                    [
+                        self.emg_timeseries[idx]
+                        .peaks["neural_breaths"]
+                        .peak_df.shape[0]
+                        for idx in self.emg_idx
+                    ]
                 )
+            ]
+            shortest_idx = emg_idx_sorted[0]
+            longest_idx = emg_idx_sorted[-1]
+
+            self.emg_timeseries[longest_idx].link_peak_set(
+                peak_set_name="neural_breaths",
+                t_reference_peaks=self.emg_timeseries[shortest_idx]
+                .peaks["neural_breaths"]
+                .peak_df["peak_idx"]
+                .to_numpy()
+                / self.emg_timeseries.param["fs"],
+                linked_peak_set_name="neural_breaths",
+            )
+            # for idx in self.emg_idx:
+            # link tidal peaks to the closest neural peaks
+            self.vent_timeseries[self.v_vent_idx].link_peak_set(
+                peak_set_name="ventilator_breaths",
+                t_reference_peaks=self.emg_timeseries[shortest_idx]
+                .peaks["neural_breaths"]
+                .peak_df["peak_idx"]
+                .to_numpy()
+                / self.emg_timeseries.param["fs"],
+                linked_peak_set_name="neural_breaths",
+            )
 
     def get_emg_breaths(self, trial: Literal["PEEP", "PS"] = "PEEP") -> None:
         """Process the EMG breaths.
