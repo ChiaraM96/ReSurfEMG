@@ -12,6 +12,7 @@ from resurfemg.data_connector.data_classes import (
 )
 from resurfemg.legacy import helper_functions as legacy
 from resurfemg.postprocessing import features as feat
+from resurfemg.postprocessing import event_detection as evt
 
 _available_methods = [
     "gating",
@@ -89,7 +90,7 @@ class MultimodalDataGroup:
             v_measure = "Pocc"
         else:
             emg_peak_set_name = "neural_breaths"
-            vent_peak_set_name = "neural_breaths"
+            vent_peak_set_name = "ventilator_breaths"
             v_idx = self.v_vent_idx
             v_measure = "TV"
 
@@ -224,8 +225,54 @@ class MultimodalDataGroup:
         self.emg_timeseries.baseline(
             channel_idxs=self.emg_idx, signal_io=("env", "baseline")
         )
+    
+    
 
-    def link_breaths(self, trial: Literal["PEEP", "PS"] = "PEEP") -> None:
+    @staticmethod
+    def merge_three_modalities(peaks_a: pd.DataFrame, peaks_b: pd.DataFrame, peaks_c: pd.DataFrame, name_a: str, name_b: str, name_c: str, fs_a: float, fs_b: float, fs_c: float, tolerance_ab=0.2, tolerance_ac=0.5) -> pd.DataFrame:
+
+        @staticmethod
+        def link_breats_two_way(t_first: np.ndarray, t_second: np.ndarray, tolerance: float=0.2) -> tuple[np.ndarray, np.ndarray]:
+            second_in_first = evt.find_linked_peaks(t_second, t_first)
+            first_in_second = evt.find_linked_peaks(t_first, t_second)
+    
+            second_in_first_common = np.unique(second_in_first[abs(np.asarray([t_first[second_in_first[i]] - t_second[i] for i in range(len(t_second))])) < tolerance])
+            first_in_second_common = np.unique(first_in_second[abs(np.asarray([t_second[first_in_second[i]] - t_first[i] for i in range(len(t_first))])) < tolerance])
+    
+            return first_in_second_common, second_in_first_common
+        
+        @staticmethod
+        def merge_peak_dfs(peaks_first: pd.DataFrame, peaks_second: pd.DataFrame, name_first: str, name_second: str, first_in_second: np.ndarray, second_in_first: np.ndarray) -> pd.DataFrame:
+            
+            peaks_merged = peaks_first.copy()
+            if not isinstance(peaks_merged.columns, pd.MultiIndex):
+                peaks_merged.columns = pd.MultiIndex.from_product([[name_first], peaks_merged.columns])
+            if not isinstance(peaks_merged.columns, pd.MultiIndex):
+                peaks_merged.columns = pd.MultiIndex.from_product([[name_first], peaks_merged.columns])
+            peaks_merged[(name_second, "peak_idx")] = pd.Series(dtype=float)
+            peaks_merged.iloc[second_in_first, -1] = peaks_second.iloc[first_in_second]["peak_idx"].values
+            second_mi = peaks_second.copy()
+            second_mi.columns = pd.MultiIndex.from_product(iterables=[[name_second], second_mi.columns])
+            peaks_merged = peaks_merged.merge(second_mi, on=[(name_second, "peak_idx")], how="outer")
+
+            return peaks_merged
+        
+        t_a = peaks_a["peak_idx"].to_numpy() / fs_a
+        t_b = peaks_b["peak_idx"].to_numpy() / fs_b
+        t_c = peaks_c["peak_idx"].to_numpy() / fs_c
+
+        a_in_b_common, b_in_a_common = link_breats_two_way(t_a, t_b, tolerance=0.2)
+        peaks_a_and_b = merge_peak_dfs(peaks_a, peaks_b, name_a, name_b, a_in_b_common, b_in_a_common)
+
+        t_a_and_b = peaks_a_and_b[[(name_b, "peak_idx"), (name_a, "peak_idx")]].to_numpy()
+        t_a_and_b = np.nanmean(t_a_and_b, axis=1) / fs_a
+
+        a_and_b_in_c_common, c_in_a_and_b_common = link_breats_two_way(t_a_and_b, t_c, tolerance=0.5)
+        peaks_total = merge_peak_dfs(peaks_a_and_b, peaks_c, name_a, name_c, a_and_b_in_c_common, c_in_a_and_b_common)
+
+        return peaks_total
+    
+    def link_breaths(self, trial: Literal["PEEP", "PS"] = "PEEP") -> None | dict[str, pd.DataFrame]:
         """Link the detected breaths across modalities.
 
         For PEEP trials, links the EMG peaks to the closest Pocc peaks.
@@ -249,6 +296,18 @@ class MultimodalDataGroup:
                     linked_peak_set_name="Pocc",
                 )
         else:
+            # link ventilator peaks to the closest neural peaks
+            linked_breaths = {"peak_df": pd.DataFrame(), "quality_outcomes_df": pd.DataFrame(), "quality_values_df": pd.DataFrame()}
+
+            for df_name in linked_breaths.keys():
+                peaks_di = getattr(self.emg_timeseries[self.emg_idx[0]].peaks["neural_breaths"], df_name)
+                fs_di = self.emg_timeseries.param['fs']
+                peaks_ic = getattr(self.emg_timeseries[self.emg_idx[1]].peaks["neural_breaths"], df_name)
+                fs_b = self.emg_timeseries.param['fs']
+                peaks_vent = getattr(self.vent_timeseries[self.v_vent_idx].peaks["ventilator_breaths"], df_name)
+                fs_vent = self.vent_timeseries.param['fs']
+                linked_breaths[df_name] = self.merge_three_modalities(peaks_di, peaks_ic, peaks_vent, "di", "ic", "vent", fs_di, fs_b, fs_vent, tolerance_ab=0.2, tolerance_ac=0.5)
+
             emg_idx_sorted = [
                 self.emg_idx[i]
                 for i in np.argsort(
@@ -283,6 +342,9 @@ class MultimodalDataGroup:
                 / self.emg_timeseries.param["fs"],
                 linked_peak_set_name="neural_breaths",
             )
+
+            return linked_breaths
+            
 
     def get_emg_breaths(self, trial: Literal["PEEP", "PS"] = "PEEP") -> None:
         """Process the EMG breaths.
