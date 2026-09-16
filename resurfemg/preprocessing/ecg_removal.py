@@ -57,7 +57,9 @@ def detect_ecg_peaks(
 
     if bp_filter:
         lp_cf = min([500, 0.95 * fs / 2])
-        ecg_filt = filt.emg_bandpass_butter(ecg_raw, high_pass=1, low_pass=lp_cf, fs_emg=fs)
+        ecg_filt = filt.emg_bandpass_butter(
+            ecg_raw, high_pass=1, low_pass=lp_cf, fs_emg=fs
+        )
         ecg_rms = evl.full_rolling_rms(ecg_filt, fs // 200)
     else:
         ecg_rms = evl.full_rolling_rms(ecg_raw, fs // 200)
@@ -65,12 +67,16 @@ def detect_ecg_peaks(
     min_ecg_rms = np.percentile(ecg_rms, 1)
     peak_height = peak_fraction * (max_ecg_rms - min_ecg_rms)
 
-    ecg_peak_idxs, _ = scipy.signal.find_peaks(ecg_rms, height=peak_height, width=peak_width_s, distance=peak_distance)
+    ecg_peak_idxs, _ = scipy.signal.find_peaks(
+        ecg_rms, height=peak_height, width=peak_width_s, distance=peak_distance
+    )
 
     return ecg_peak_idxs
 
 
-def _windowed_masked_mean(source: np.ndarray, starts: np.ndarray, width: int, max_sample: int) -> np.ndarray:
+def _windowed_masked_mean(
+    source: np.ndarray, starts: np.ndarray, width: int, max_sample: int
+) -> np.ndarray:
     """Windowed masked mean.
 
     Mean over [start, start + width) windows of `source`, ignoring both
@@ -93,7 +99,9 @@ def _windowed_masked_mean(source: np.ndarray, starts: np.ndarray, width: int, ma
     return masked.mean(axis=1).filled(np.nan)  # (K,)
 
 
-def _get_emg_raw_gated_rms(emg_raw_gated: np.ndarray, gate_mask: np.ndarray, gate_width: int) -> np.ndarray:
+def _get_emg_raw_gated_rms(
+    emg_raw_gated: np.ndarray, gate_mask: np.ndarray, gate_width: int
+) -> np.ndarray:
     # define this helper for reusability as it's used in both RMS and quadratic methods
     emg_raw_gated_base = copy.deepcopy(emg_raw_gated)
     emg_raw_gated_base[gate_mask] = np.nan
@@ -117,9 +125,13 @@ def _gate_fill_interp(
     pre_in = (pre_idx >= 0) & (pre_idx < max_sample)
     post_in = (post_idx >= 0) & (post_idx < max_sample)
     pre_val = np.where(pre_in, emg_raw_gated[np.clip(pre_idx, 0, max_sample - 1)], 0.0)
-    post_val = np.where(post_in, emg_raw_gated[np.clip(post_idx, 0, max_sample - 1)], 0.0)
+    post_val = np.where(
+        post_in, emg_raw_gated[np.clip(post_idx, 0, max_sample - 1)], 0.0
+    )
 
-    owner = np.clip(np.searchsorted(k_start, gated_idx, side="right") - 1, 0, len(peaks) - 1)
+    owner = np.clip(
+        np.searchsorted(k_start, gated_idx, side="right") - 1, 0, len(peaks) - 1
+    )
     frac = (gated_idx - peaks[owner] + half_gate_width) / float(gate_width)
     emg_raw_gated[gated_idx] = (1.0 - frac) * pre_val[owner] + frac * post_val[owner]
     return emg_raw_gated
@@ -138,10 +150,14 @@ def _gate_fill_prior_mean(
     prior_start = peaks - half_gate_width * 3
     clamped = prior_start < 0
     prior_means = _windowed_masked_mean(emg_raw, prior_start, gate_width, max_sample)
-    post_means = _windowed_masked_mean(emg_raw, peaks + half_gate_width, gate_width, max_sample)
+    post_means = _windowed_masked_mean(
+        emg_raw, peaks + half_gate_width, gate_width, max_sample
+    )
     fill_means = np.where(clamped, post_means, prior_means)
 
-    owner = np.clip(np.searchsorted(k_start, gated_idx, side="right") - 1, 0, len(peaks) - 1)
+    owner = np.clip(
+        np.searchsorted(k_start, gated_idx, side="right") - 1, 0, len(peaks) - 1
+    )
     emg_raw_gated[gated_idx] = fill_means[owner]
     return emg_raw_gated
 
@@ -157,7 +173,12 @@ def _gate_fill_rms(
 
     w = max(1, 2 * int(1.5 * gate_width) + 1)
     closed = "neither" if gate_width % 2 == 0 else "left"
-    local_mean = pd.Series(emg_raw_gated_rms).rolling(window=w, min_periods=1, center=True, closed=closed).mean().values
+    local_mean = (
+        pd.Series(emg_raw_gated_rms)
+        .rolling(window=w, min_periods=1, center=True, closed=closed)
+        .mean()
+        .values
+    )
 
     fill_vals = np.asarray(local_mean[gated_idx])
     interp_mask = np.isnan(fill_vals)
@@ -193,7 +214,9 @@ def _interp_missing_samples(
     if not other_mask.any():  # no anchors left to interpolate from
         return emg_raw_gated
 
-    emg_raw_gated[interpolate_samples] = np.interp(interpolate_samples, x_samp[other_mask], emg_raw_gated[other_mask])
+    emg_raw_gated[interpolate_samples] = np.interp(
+        interpolate_samples, x_samp[other_mask], emg_raw_gated[other_mask]
+    )
     return emg_raw_gated
 
 
@@ -269,7 +292,9 @@ def gating(
             max_sample,
         )
     elif method == _GATE_FILL_RMS:  # 3
-        emg_raw_gated = _gate_fill_rms(emg_raw_gated, gate_mask, gated_idx, gate_width, max_sample)
+        emg_raw_gated = _gate_fill_rms(
+            emg_raw_gated, gate_mask, gated_idx, gate_width, max_sample
+        )
     else:
         msg = f"Invalid method {method}."
         raise ValueError(msg)
@@ -357,8 +382,12 @@ def wavelet_denoising(
             )
 
             # Correct on- and offset effects
-            std_estimated[k, : window_length // 2] = std_estimated[k, window_length // 2]
-            std_estimated[k, -window_length // 2 :] = std_estimated[k, -window_length // 2]
+            std_estimated[k, : window_length // 2] = std_estimated[
+                k, window_length // 2
+            ]
+            std_estimated[k, -window_length // 2 :] = std_estimated[
+                k, -window_length // 2
+            ]
         return std_estimated
 
     def get_gate_windows(rpeak_bool_vec: np.ndarray, window_length: int) -> np.ndarray:
@@ -377,12 +406,16 @@ def wavelet_denoising(
         gate_windows = np.zeros_like(rpeak_bool_vec)
         for _, rpeak_idx in enumerate(rpeak_idxs):
             gate_windows[
-                max(rpeak_idx - window_length // 2, 0) : min(rpeak_idx + window_length // 2, len(rpeak_bool_vec))
+                max(rpeak_idx - window_length // 2, 0) : min(
+                    rpeak_idx + window_length // 2, len(rpeak_bool_vec)
+                )
             ] = 1
 
         return gate_windows
 
-    def threshold_wavelets(data: np.ndarray, hard_thresholding: bool, threshold: float | np.ndarray) -> np.ndarray:
+    def threshold_wavelets(
+        data: np.ndarray, hard_thresholding: bool, threshold: float | np.ndarray
+    ) -> np.ndarray:
         """Threshold wavelet coefficients.
 
         Apply thresholding to data based on 'soft' or 'hard' option.
@@ -435,7 +468,9 @@ def wavelet_denoising(
     for k in range(n):
         threshold = fixed_threshold * s[k, :]
         thresholds[k, :] = threshold
-        wxd[k, 1, :] = threshold_wavelets(wav_dec_unpacked[k, 1, :], hard_thresholding, threshold)
+        wxd[k, 1, :] = threshold_wavelets(
+            wav_dec_unpacked[k, 1, :], hard_thresholding, threshold
+        )
 
     # # Wavelet reconstruction
     ecg_reconstructd = pywt.iswt([tuple(subband) for subband in wxd], wavelet_type)
