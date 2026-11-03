@@ -2,96 +2,100 @@
 Licensed under the Apache License, version 2.0. See LICENSE for details.
 
 This file contains functions to automatically find specified files and folders.
-"""
+"""  # noqa: D205
 
-import glob
-import os
-import platform
+from pathlib import Path, PurePath
 
 import pandas as pd
 
+DEFAULT_REGEX = "*"
+
+
+def _check_valid_path(path: str | Path) -> bool:
+    """Check if the provided path is valid."""
+    if not isinstance(path, (str, Path)):
+        msg = "base_path should be a str or Path."
+        raise TypeError(msg)
+    if not Path(path).is_dir():
+        msg = "Specified path cannot be found."
+        raise ValueError(msg)
+    return True
+
+
+def _check_folder_levels(
+    folder_levels: list[str] | str | None,
+) -> tuple[list[str], int]:
+    if folder_levels is None:
+        folder_levels = ""
+    if not isinstance(folder_levels, (list, str)):
+        msg = "folder_levels should be a list or str."
+        raise TypeError(msg)
+    if isinstance(folder_levels, str):
+        folder_levels = [folder_levels] if folder_levels else []
+    return list(folder_levels), len(folder_levels)
+
 
 def find_files(
-    base_path,
-    file_name_regex=None,
-    extension_regex=None,
-    folder_levels=None,
-    verbose=True,
-):
-    """Find files with the file name and extension according to filename pattern
+    base_path: str | Path,
+    file_name_regex: str = DEFAULT_REGEX,
+    extension_regex: str = DEFAULT_REGEX,
+    folder_levels: list[str] | str = "",
+    verbose: bool = True,
+) -> pd.DataFrame:
+    """Regex-based file discovery function.
+
+    Find files with the file name and extension according to filename pattern
     `file_name_regex`.`extension_regex` starting from the provided base_path
     according to the provided folder_leves. If `folder_levels` is None, all
     files matching the name pattern included, no matter the data organisation.
     ---------------------------------------------------------------------------
-    :param base_path: Path to starting directory
-    :type base_path: str
-    :param file_name_regex: file name pattern, see Python Regex docs
-    :type file_name_regex: str
-    :param extension_regex: file extension pattern, see Python Regex docs
-    :type extension_regex: str
-    :param folder_levels: data directory organisation, e.g. ['patient', 'date']
-    :type folder_levels: list(str) or str
-    :param verbose: Provide feedback about non-included files
-    :type verbose: bool
 
-    :returns files: Matching file paths tabled by the folder_levels
-    :rtype files: pd.DataFrame
+    Args:
+        base_path(str): Path to starting directory
+        file_name_regex(str, optional): file name pattern, see Python Regex docs
+            (Default value = None)
+        extension_regex(str, optional): file extension pattern, see Python Regex docs
+            (Default value = None)
+        folder_levels(list(str) or str, optional): data directory organisation,
+            e.g. ['patient', 'date'] (Default value = None)
+        verbose(bool, optional): Provide feedback about non-included files
+            (Default value = True)
+
+    Returns:
+      pd.DataFrame: Matching file paths tabled by the folder_levels
+
     """
-    if not os.path.isdir(base_path):
-        msg = "Specified base_path cannot be found."
-        raise ValueError(msg)
+    _check_valid_path(base_path)
 
-    if file_name_regex is None:
-        file_name_regex = "**"
-    elif not isinstance(file_name_regex, str):
+    if not isinstance(file_name_regex, str):
         msg = "file_name_regex should be a str."
-        raise ValueError(msg)
+        raise TypeError(msg)
 
-    if extension_regex is None:
-        extension_regex = "**"
-    elif not isinstance(extension_regex, str):
+    if not isinstance(extension_regex, str):
         msg = "extension_regex should be a str."
-        raise ValueError(msg)
-    extension_regex = extension_regex.removeprefix(".")
+        raise TypeError(msg)
 
-    if isinstance(folder_levels, list):
-        depth = len(folder_levels)
-        folder_levels.append("files")
-    elif folder_levels is None:
-        depth = None
-        folder_levels = ["files"]
-    else:
-        msg = "Provide either a list, or None as folder_levels."
-        raise ValueError(msg)
+    folder_levels, depth = _check_folder_levels(folder_levels)
+    folder_levels = [*folder_levels, "files"]
 
-    if platform.system() == "Windows":
-        path_sep = "\\"
-    else:
-        path_sep = "/"
+    matching_files = Path(base_path).rglob(file_name_regex + "." + extension_regex)
 
-    data_pattern = os.path.join(
-        base_path, "**" + path_sep + file_name_regex + "." + extension_regex
-    )
-    matching_files = glob.glob(data_pattern, recursive=True)
-    files_structure = list()
-    for file_name in matching_files:
-        files_structure.append(
-            file_name.replace(base_path + path_sep, "").split(path_sep)
-        )
+    files_structure = [
+        file_name.relative_to(base_path).parts for file_name in matching_files
+    ]
 
-    matching_files_structure = list()
-    non_matching_files_structure = list()
+    matching_files_structure = []
+    non_matching_files_structure = []
     for file in files_structure:
-        if depth is None:
-            matching_files_structure.append(path_sep.join(file))
-        elif (isinstance(file, str) and (depth == 0)) or (
-            isinstance(file, list) and (len(file) == depth + 1)
-        ):
+        file_depth = len(file)
+        if depth == 0:
+            matching_files_structure.append((PurePath(*file).as_posix(),))
+        elif file_depth - 1 == depth:
             matching_files_structure.append(file)
         else:
             non_matching_files_structure.append(file)
 
-    files = pd.DataFrame(matching_files_structure, columns=folder_levels)
+    files = pd.DataFrame(matching_files_structure, columns=pd.Index(folder_levels))
     if verbose is True and len(non_matching_files_structure) > 0:
         print(
             "These files did not match the provided depth:\n",
@@ -100,67 +104,51 @@ def find_files(
     return files
 
 
-def find_folders(base_path, folder_levels=None, verbose=True):
-    """Find folders up to the depth of the provided folder_levels starting from
+def find_folders(
+    base_path: str | Path,
+    folder_levels: list[str] | str = "",
+    verbose: bool = True,
+) -> pd.DataFrame:
+    """Find subfolders in a provided path.
+
+    Find folders up to the depth of the provided folder_levels starting from
     the provided base_path. If `folder_levels` is None, all folders in the
     provided are included, no matter the data organisation.
     ---------------------------------------------------------------------------
-    :param base_path: Path to starting directory
-    :type base_path: str
-    :param folder_levels: data directory organisation, e.g. ['patient', 'date']
-    :type folder_levels: list(str) or str
-    :param verbose: Provide feedback about non-included files
-    :type verbose: bool
 
-    :returns folders: Folder paths tabled by the folder_levels
-    :rtype folders: pd.DataFrame
+    Args:
+        base_path(Path): Path to starting directory
+        folder_levels(list(str) or str, optional): data directory organisation,
+            e.g. ['patient', 'date'] (Default value = None)
+        verbose(bool, optional): Provide feedback about non-included files
+            (Default value = True)
+
+    Returns:
+        folders: pd.DataFrame: folders: Folder paths tabled by the folder_levels
+
     """
-    if not os.path.isdir(base_path):
-        msg = "Specified base_path cannot be found."
-        raise ValueError(msg)
+    _check_valid_path(base_path)
 
-    if isinstance(folder_levels, list):
-        depth = len(folder_levels)
-    elif folder_levels is None:
-        depth = None
+    folder_levels, depth = _check_folder_levels(folder_levels)
+    if depth == 0:
         folder_levels = ["destination"]
-    else:
-        msg = "Provide either a list, or None as folder_levels."
-        raise ValueError(msg)
 
-    if platform.system() == "Windows":
-        path_sep = "\\"
-    else:
-        path_sep = "/"
+    matching_paths = Path(base_path).glob("*/" * max(depth, 1))
+    path_structure = []
+    path_structure = [
+        path_name.relative_to(base_path).parts for path_name in matching_paths
+    ]
 
-    if depth is None:
-        data_pattern = os.path.join(base_path, "*" + path_sep)
-    else:
-        data_pattern = os.path.join(base_path, depth * ("*" + path_sep))
-    matching_paths = glob.glob(data_pattern, recursive=False)
-
-    path_structure = list()
-    for path_name in matching_paths:
-        path_structure.append(
-            path_name.replace(base_path + path_sep, "").split(path_sep)
-        )
-
-    matching_path_structure = list()
-    non_matching_path_structure = list()
+    matching_path_structure = []
+    non_matching_path_structure = []
     for sub_path in path_structure:
-        if depth is None:
-            if isinstance(sub_path, str):
-                matching_path_structure.append(path_sep.join(sub_path))
-            elif isinstance(sub_path, list):
-                matching_path_structure.append(sub_path[0])
-        elif isinstance(sub_path, str) and (depth == 0):
+        subpath_depth = len(sub_path)
+        if subpath_depth == max(depth, 1):
             matching_path_structure.append(sub_path)
-        elif isinstance(sub_path, list) and (len(sub_path) >= depth):
-            matching_path_structure.append(sub_path[:depth])
         else:
             non_matching_path_structure.append(sub_path)
 
-    folders = pd.DataFrame(matching_path_structure, columns=folder_levels)
+    folders = pd.DataFrame(matching_path_structure, columns=pd.Index(folder_levels))
     if verbose is True and len(non_matching_path_structure) > 0:
         print(
             "These paths did not match the provided depth:\n",
