@@ -12,29 +12,29 @@ from resurfemg.preprocessing import filtering as filt
 
 
 def respiratory_pattern_generator(
-    t_end=7 * 60,
-    fs=2048,
-    rr=22,
-    ie_ratio=1 / 2,
-    t_p_occs=None,
-):
-    """This function simulates an on/off respiratory muscle activiation pattern
+    t_end: float = 7 * 60,
+    fs: int = 2048,
+    rr: float = 22,
+    ie_ratio: float = 1 / 2,
+    t_p_occs: float | None = None,
+) -> np.ndarray:
+    """Simulate on/off respiratory muscle activation pattern.
+
+    This function simulates an on/off respiratory muscle activiation pattern
     for generating a synthetic EMG.
     ---------------------------------------------------------------------------
-    :param t_end: end time
-    :type t_end: float
-    :param fs: Sampling rate
-    :type fs: int
-    :param rr: Respiratory rate (/min)
-    :type rr: float
-    :param ie_ratio: Ratio between inspiratory and expiratory time
-    :type ie_ratio: float
-    :param t_p_occs: Timing of occlusions (s)
-    :type t_p_occs: float
 
-    :returns respiratory_pattern: The simulated on/off respiratory muscle
-        pattern.
-    :rtype respiratory_pattern: np.array[float]
+    Args:
+        t_end (float): end time (Default value = 7 * 60)
+        fs (int): Sampling rate (Default value = 2048)
+        rr (float): Respiratory rate (/min) (Default value = 22)
+        ie_ratio (float): Ratio between inspiratory and expiratory time
+            (Default value = 1 / 2)
+        t_p_occs (float): Timing of occlusions (s) (Default value = None)
+
+    Returns:
+        np.array[float]: The simulated on/off respiratory muscle pattern.
+
     """
     ie_fraction = ie_ratio / (ie_ratio + 1)
     if t_p_occs is None:
@@ -61,32 +61,31 @@ def respiratory_pattern_generator(
         i_occ = int(t_occ * fs)
         blocker = np.arange(int(fs * 60 / rr) + 1) / fs * rr / 60 * 2 * np.pi
         squared_wave = (signal.square(blocker, ie_fraction) + 1) / 2
-        respiratory_pattern[i_occ : i_occ + int(fs * 60 / rr) + 1] = (
-            squared_wave
-        )
+        respiratory_pattern[i_occ : i_occ + int(fs * 60 / rr) + 1] = squared_wave
     return respiratory_pattern
 
 
 def simulate_muscle_dynamics(
-    block_pattern,
-    fs=2048,
-    tau_mus_up=0.3,
-    tau_mus_down=0.3,
-):
-    """This function simulates an respiratory muscle activation dynamics for
+    block_pattern: np.ndarray,
+    fs: int = 2048,
+    tau_mus_up: float = 0.3,
+    tau_mus_down: float = 0.3,
+) -> np.ndarray:
+    """Simulate muscle activation dynamics.
+
+    This function simulates an respiratory muscle activation dynamics for
     generating a synthetic EMG.
     ---------------------------------------------------------------------------
-    :param block_pattern: Simulated on/off respiratory muscle pattern.
-    :type block_pattern: ~np.array[float]
-    :param fs: Sampling rate
-    :type fs: int
-    :param tau_mus_up: Muscle contraction time constant (s)
-    :type tau_mus_up: float
-    :param tau_mus_down: Muscle relaxation time constant (s)
-    :type tau_mus_down: float
 
-    :returns muscle_activation: The simulated muscle activation pattern.
-    :rtype muscle_activation: np.array[float]
+    Args:
+      block_pattern(np.array[float]): Simulated on/off respiratory muscle pattern.
+      fs(int): Sampling rate (Default value = 2048)
+      tau_mus_up(float): Muscle contraction time constant (s) (Default value = 0.3)
+      tau_mus_down(float): Muscle relaxation time constant (s) (Default value = 0.3)
+
+    Returns:
+      np.array[float]: The simulated muscle activation pattern.
+
     """
     # simulate up- and downslope dynamics of EMG
     muscle_activation = np.zeros((len(block_pattern),))
@@ -103,41 +102,51 @@ def simulate_muscle_dynamics(
     return muscle_activation
 
 
-def simulate_ventilator_data(p_mus, fs_vent=100, t_occ_bool=None, **kwargs):
-    """This function simulates ventilator data with occlusion manouevers based on
+def simulate_ventilator_data(
+    p_mus: np.ndarray,
+    fs_vent: int = 100,
+    t_occ_bool: np.ndarray | None = None,
+    **kwargs,
+) -> np.ndarray:
+    """Simulate ventilator data with occlusion manouevers.
+
+    This function simulates ventilator data with occlusion manouevers based on
     the provided `p_mus` and adds noise to the signal.
     ---------------------------------------------------------------------------
-    :param p_mus: Respiratory muscle pressure
-    :type p_mus: numpy.ndarray[float]
-    :param fs_vent: Ventilator sampling rate
-    :type fs_vent: int
-    :param t_occ_bool: Boolean array. Is true when a Pocc manoeuver is done
-    :type t_occ_bool: numpy.ndarray[bool]
 
-    :returns y_vent: The synthetic ventilator pressure, flow and volume
-    :rtype y_vent: np.array[float]
+    Args:
+        p_mus(numpy.ndarray[float]): Respiratory muscle pressure
+        fs_vent(int): Ventilator sampling rate(Default value = 100)
+        t_occ_bool(numpy.ndarray[bool]): Boolean array.
+            Is true when a Pocc manoeuver is done (Default value = None)
+        **kwargs:
+
+    Returns:
+        np.array[float]: The synthetic ventilator pressure, flow and volume
+
     """
 
     def evaluate_ventilator_status(
-        idx,
-        y_vent,
-        vent_settings,
-        vent_status,
-    ):
-        """Define the ventilator status (active support, sensitive for trigger)
+        idx: int,
+        y_vent: np.ndarray,
+        vent_settings: dict,
+        vent_status: dict,
+    ) -> dict:
+        """Derive the ventilator status based on its settings.
+
+        Define the ventilator status (active support, sensitive for trigger)
         based on the ventilator settings and ventilator flow.
         -----------------------------------------------------------------------
-        :param idx: The index to evaluate the ventilator status
-        :type idx: int
-        :param y_vent: The ventilator pressure, flow and volume
-        :type y_vent: numpy.ndarray
-        :param vent_settings: The ventilator settings
-        :type vent_settings: dict
-        :param vent_status: The current ventilator status
-        :type vent_status: dict
 
-        :returns vent_status: The new ventilator status
-        :rtype vent_status: dict
+        Args:
+          idx(int): The index to evaluate the ventilator status
+          y_vent(numpy.ndarray): The ventilator pressure, flow and volume
+          vent_settings(dict): The ventilator settings
+          vent_status(dict): The current ventilator status
+
+        Returns:
+          vent_status: dict: vent_status: The new ventilator status
+
         """
         if (vent_status["sensitive"] is True) and (
             60 * y_vent[1, idx] > vent_settings["flow_trigger"]
@@ -212,8 +221,7 @@ def simulate_ventilator_data(p_mus, fs_vent=100, t_occ_bool=None, **kwargs):
 
             # Occlusion pressure results into negative airway pressure:
             dp_step = (
-                -np.mean(p_mus[i - int(1 * fs_vent / 2) : int(i - 1)])
-                - p_dp[i - 1]
+                -np.mean(p_mus[i - int(1 * fs_vent / 2) : int(i - 1)]) - p_dp[i - 1]
             )
             p_dp[i] = p_dp[i - 1] + dp_step / (vent_settings["tau_dp_up"])
             # During occlusion manoeuvre: flow and volume are zero
@@ -225,8 +233,7 @@ def simulate_ventilator_data(p_mus, fs_vent=100, t_occ_bool=None, **kwargs):
                 p_dp[i] = p_dp[i - 1] + dp_step / vent_settings["tau_dp_down"]
             # Calculate flows and volumes from equation of motion:
             y_vent[1, i] = (
-                (p_dp[i - 1] + p_mus[i - 1])
-                - y_vent[2, i - 1] / lung_mechanics["c"]
+                (p_dp[i - 1] + p_mus[i - 1]) - y_vent[2, i - 1] / lung_mechanics["c"]
             ) / lung_mechanics["r"]
             y_vent[2, i] = y_vent[2, i - 1] + y_vent[1, i] * 1 / fs_vent
             if (vent_status["sensitive"] is False) and (y_vent[1, i] < 0):
@@ -238,23 +245,29 @@ def simulate_ventilator_data(p_mus, fs_vent=100, t_occ_bool=None, **kwargs):
 
 
 def simulate_emg(
-    muscle_activation, fs_emg=2048, emg_amp=5, drift_amp=100, noise_amp=2
-):
-    """This function simulates an surface respiratory emg based on the provided
+    muscle_activation: np.ndarray,
+    fs_emg: int = 2048,
+    emg_amp: float = 5,
+    drift_amp: float = 100,
+    noise_amp: float = 2,
+) -> np.ndarray:
+    """Simulate surface respiratory EMG.
+
+    This function simulates an surface respiratory emg based on the provided
     `muscle_activation` and adds noise and drift to the signal. No ecg
     component is included, but can be added later.
     ---------------------------------------------------------------------------
-    :param muscle_activation: The muscle activation pattern
-    :type muscle_activation: float
-    :param emg_amp: Approximate EMG-RMS amplitude (uV)
-    :type emg_amp: float
-    :param drift_amp: Approximate drift RMS amplitude (uV)
-    :type drift_amp: float
-    :param noise_amp: Approximate baseline noise RMS amplitude (uV)
-    :type noise_amp: float
 
-    :returns emg_raw: The raw synthetic EMG without the ECG added.
-    :rtype: np.array[float]
+    Args:
+        muscle_activation(float): The muscle activation pattern
+        fs_emg(int): EMG sampling rate (Default value = 2048)
+        emg_amp(float): Approximate EMG-RMS amplitude (uV) (Default value = 5)
+        drift_amp(float): Approximate drift RMS amplitude (uV) (Default value = 100)
+        noise_amp(float): Approximate baseline noise RMS amplitude (uV) (Default value = 2)
+
+    Returns:
+        np.array[float]: The raw synthetic EMG without the ECG added.
+
     """
     n_samp = len(muscle_activation)
     # make respiratory EMG component
@@ -268,9 +281,7 @@ def simulate_emg(
     white_noise = np.random.normal(
         0, drift_amp, size=(n_samp + int(1 / f_high) * fs_emg,)
     )
-    part_drift_tmp = filt.emg_lowpass_butter(
-        white_noise, f_high, fs_emg, order=3
-    )
+    part_drift_tmp = filt.emg_lowpass_butter(white_noise, f_high, fs_emg, order=3)
     part_drift = part_drift_tmp[int(1 / f_high) * fs_emg :] / f_high
 
     # mix channels, could be remixed with an ecg
