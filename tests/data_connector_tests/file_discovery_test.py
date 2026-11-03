@@ -8,9 +8,7 @@ import unittest
 from resurfemg.data_connector import file_discovery
 
 base_path = os.path.join(
-    os.path.abspath(
-        os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-    ),
+    os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
     "test_data",
 )
 
@@ -24,9 +22,7 @@ class TestFileDiscovery(unittest.TestCase):
             folder_levels=None,
             verbose=False,
         )
-        real_files = glob.glob(
-            os.path.join(base_path, "*.Poly5"), recursive=False
-        )
+        real_files = glob.glob(os.path.join(base_path, "*.Poly5"), recursive=False)
 
         self.assertEqual(
             (len(found_files)),
