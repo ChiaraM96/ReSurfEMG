@@ -105,7 +105,7 @@ extend-include = ["*.ipynb"]
 
 [tool.ruff.lint]
 select = ["ALL"]
-pydocstyle.convention = "google" # docstring settings
+pydocstyle.convention = "numpy" # docstring settings
 ignore = [
     # Unwanted (potentially)
     "FBT",    # Using boolean arguments
@@ -180,3 +180,4 @@ max-complexity = 15
     "PT009",    # Use a regular `assert` instead of unittest-style `assertEqual` (pytest)
 ]
 "docs/*" = ["ALL"]
+"!tests/**" = ["PT"]
