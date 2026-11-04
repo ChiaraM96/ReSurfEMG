@@ -13,15 +13,104 @@ from resurfemg.data_connector.data_classes import TimeSeries
 from resurfemg.data_connector.peakset_class import PeaksSet
 from resurfemg.postprocessing import quality_assessment as qa
 
-CUTOFF_OPTIONS_TYPE = Literal["tolerant", "strict"]
 CUTOFF_DICT_TYPE = dict[str, float]
+CUTOFF_OPTIONS_TYPE: Literal["tolerant", "strict"]
+CUTOFF_TYPES = CUTOFF_DICT_TYPE | Literal["tolerant", "strict"]
 PARAMETER_NAMES_TYPE = dict[str, str]
+THRESHOLD_TYPES = int | float | np.number
+AUB_WINDOW_SECONDS = 5
+BELLS_WINDOW_SECONDS = 5
+CUTOFF_DEFAULTS = {
+    "tolerant": {
+        "interpeak_distance": 1.1,
+        "snr": 1.4,
+        "aub": 40,
+        "curve_fit": 30,
+        "relative_aub_percentile": 75.0,
+        "relative_aub_factor": 4.0,
+        "relative_etp_upper_percentile": 95.0,
+        "relative_etp_upper_factor": 10.0,
+        "relative_etp_lower_percentile": 5.0,
+        "relative_etp_lower_factor": 0.1,
+    },
+    "strict": {
+        "interpeak_distance": 1.1,
+        "snr": 1.75,
+        "aub": 30,
+        "curve_fit": 25,
+        "relative_aub_percentile": 75.0,
+        "relative_aub_factor": 2.0,
+        "relative_etp_upper_percentile": 95.0,
+        "relative_etp_upper_factor": 10.0,
+        "relative_etp_lower_percentile": 5.0,
+        "relative_etp_lower_factor": 0.1,
+    },
+}
+
+TESTS_EMG = ["interpeak_distance", "snr", "aub", "curve_fit"]
+TESTS_LINKED = {
+    "fraction_emg_breaths": ["fraction_emg_breaths"],
+    "event_timing": ["delta_min", "delta_max"],
+}
+
+
+def _check_cutoff_and_skips(
+    test: str | tuple[str, str],
+    cutoff: CUTOFF_DICT_TYPE,
+    skip_tests: list[str],
+) -> None:
+    if isinstance(test, tuple):
+        test, crit = test
+    else:
+        crit = test
+    if test not in skip_tests:
+        if crit not in cutoff:
+            raise KeyError("No cut-off value provided for: " + crit)
+        if not isinstance(cutoff[crit], THRESHOLD_TYPES):
+            raise ValueError("Invalid cut-off value provided for: " + crit)
+
+
+def _check_aub_cutoffs(
+    test: str, cutoff: CUTOFF_DICT_TYPE, skip_tests: list[str]
+) -> None:
+    if "aub" not in skip_tests and "aub_window_s" not in cutoff:
+        raise KeyError(
+            "No area under the baseline window provided for: " + test
+        )
+    if "relative_aub" not in skip_tests:
+        if "relative_aub_percentile" not in cutoff:
+            msg_0 = (
+                "No relative area under the baseline percentile"
+                " provided for: relative_aub"
+            )
+            raise KeyError(msg_0)
+        if "relative_aub_factor" not in cutoff:
+            msg_0 = (
+                "No relative area under the baseline factor provided for:"
+                " relative_aub"
+            )
+            raise KeyError(msg_0)
+
+
+def _check_etp_cutoffs(
+    cutoff: CUTOFF_DICT_TYPE, skip_tests: list[str]
+) -> None:
+    if "relative_etp" not in skip_tests:
+        for _param in [
+            "upper_percentile",
+            "upper_factor",
+            "lower_percentile",
+            "lower_factor",
+        ]:
+            if ("relative_etp_" + _param) not in cutoff:
+                msg_0 = f"No relative_etp_{_param} provided for: relative_etp"
+                raise KeyError(msg_0)
 
 
 def initialize_emg_tests(
     timeseries: TimeSeries,
     peak_set_name: str,
-    cutoff: CUTOFF_OPTIONS_TYPE | CUTOFF_DICT_TYPE | None = None,
+    cutoff: CUTOFF_TYPES = "tolerant",
     skip_tests: list[str] | None = None,
     parameter_names: PARAMETER_NAMES_TYPE | None = None,
 ) -> tuple[
@@ -103,86 +192,26 @@ def initialize_emg_tests(
     else:
         msg = "Non-existent PeaksSet key"
         raise KeyError(msg)
+    skip_tests = skip_tests if skip_tests is not None else []
+    cutoff = cutoff if cutoff is not None else "tolerant"
+    parameter_names = parameter_names if parameter_names is not None else {}
+    match cutoff:
+        case "tolerant" | "strict":
+            cutoff = {
+                **CUTOFF_DEFAULTS[cutoff],
+                "aub_window_s": 5 * timeseries.param["fs"],
+                "bell_window_s": 5 * timeseries.param["fs"],
+            }
+        case dict(cutoff):
+            for test in TESTS_EMG:
+                _check_cutoff_and_skips(test, cutoff, skip_tests)
+                _check_aub_cutoffs(test, cutoff, skip_tests)
+                _check_etp_cutoffs(cutoff, skip_tests)
+        case _:
+            msg_0 = "Invalid cut-off value provided."
+            raise ValueError(msg_0)
 
-    if skip_tests is None:
-        skip_tests = []
-
-    if cutoff is None or (isinstance(cutoff, str) and cutoff == "tolerant"):
-        cutoff = {
-            "interpeak_distance": 1.1,
-            "snr": 1.4,
-            "aub": 40,
-            "curve_fit": 30,
-            "aub_window_s": 5 * timeseries.param["fs"],
-            "bell_window_s": 5 * timeseries.param["fs"],
-            "relative_aub_percentile": 75.0,
-            "relative_aub_factor": 4.0,
-            "relative_etp_upper_percentile": 95.0,
-            "relative_etp_upper_factor": 10.0,
-            "relative_etp_lower_percentile": 5.0,
-            "relative_etp_lower_factor": 0.1,
-        }
-    elif isinstance(cutoff, str) and cutoff == "strict":
-        cutoff = {
-            "interpeak_distance": 1.1,
-            "snr": 1.75,
-            "aub": 30,
-            "curve_fit": 25,
-            "aub_window_s": 5 * timeseries.param["fs"],
-            "bell_window_s": 5 * timeseries.param["fs"],
-            "relative_aub_percentile": 75.0,
-            "relative_aub_factor": 2.0,
-            "relative_etp_upper_percentile": 95.0,
-            "relative_etp_upper_factor": 10.0,
-            "relative_etp_lower_percentile": 5.0,
-            "relative_etp_lower_factor": 0.1,
-        }
-    elif isinstance(cutoff, dict):
-        tests = ["interpeak_distance", "snr", "aub", "curve_fit"]
-        for _, test in enumerate(tests):
-            if test not in skip_tests:
-                if test not in cutoff:
-                    raise KeyError("No cut-off value provided for: " + test)
-                if isinstance(cutoff, float):
-                    raise ValueError(
-                        "Invalid cut-off value provided for: " + test
-                    )
-
-        if "aub" not in skip_tests and "aub_window_s" not in cutoff:
-            raise KeyError(
-                "No area under the baseline window provided for: " + test
-            )
-        if "relative_aub" not in skip_tests:
-            if "relative_aub_percentile" not in cutoff:
-                msg_0 = (
-                    "No relative area under the baseline percentile"
-                    " provided for: relative_aub"
-                )
-                raise KeyError(msg_0)
-            if "relative_aub_factor" not in cutoff:
-                msg_0 = (
-                    "No relative area under the baseline factor "
-                    "provided for: relative_aub"
-                )
-                raise KeyError(msg_0)
-        if "relative_etp" not in skip_tests:
-            _params = [
-                "upper_percentile",
-                "upper_factor",
-                "lower_percentile",
-                "lower_factor",
-            ]
-            for _param in _params:
-                if ("relative_etp_" + _param) not in cutoff:
-                    msg_0 = (
-                        f"No relative_etp_{_param} provided for: relative_aub"
-                    )
-                    raise KeyError(msg_0)
-
-    if parameter_names is None:
-        parameter_names = {}
-
-    for parameter in ["ecg", "time_product", "baseline", "ecg"]:
+    for parameter in ["ecg", "time_product", "baseline"]:
         if parameter not in parameter_names:
             parameter_names[parameter] = parameter
 
@@ -190,9 +219,7 @@ def initialize_emg_tests(
     quality_values_df = pd.DataFrame(
         data=peak_set.peak_df["peak_idx"], columns=pd.Index(["peak_idx"])
     )
-    quality_outcomes_df = pd.DataFrame(
-        data=peak_set.peak_df["peak_idx"], columns=pd.Index(["peak_idx"])
-    )
+    quality_outcomes_df = quality_values_df.copy()
     return (
         skip_tests,
         cutoff,
@@ -604,7 +631,7 @@ def test_relative_etp(
 def initialize_pocc_tests(
     timeseries: TimeSeries,
     peak_set_name: str,
-    cutoff: CUTOFF_DICT_TYPE | CUTOFF_OPTIONS_TYPE | None,
+    cutoff: CUTOFF_TYPES | None,
     skip_tests: list[str] | None,
     parameter_names: PARAMETER_NAMES_TYPE | None,
 ) -> tuple[
@@ -818,7 +845,10 @@ def test_pocc_upslope(
 
     """
     if "end_idx" not in peak_set.peak_df.columns:
-        msg = "Pocc end_idx not determined, but required for Pocc upslope evaluaton."
+        msg = (
+            "Pocc end_idx not determined, but required for Pocc "
+            "upslope evaluaton."
+        )
         raise ValueError(msg)
     if parameter_names["time_product"] not in peak_set.peak_df.columns:
         msg = "PTPs not determined, but required for Pocc upslope evaluaton."
@@ -845,9 +875,9 @@ def initialize_linked_peaks_tests(
     peak_set_name: str,
     linked_timeseries: TimeSeries,
     linked_peak_set_name: str,
-    cutoff: CUTOFF_DICT_TYPE | CUTOFF_OPTIONS_TYPE | None,
-    skip_tests: list[str] | None,
-    parameter_names: PARAMETER_NAMES_TYPE | None,
+    cutoff: CUTOFF_TYPES = "tolerant",
+    skip_tests: list[str] | None = None,
+    parameter_names: PARAMETER_NAMES_TYPE | None = None,
 ) -> tuple[
     list[str],
     CUTOFF_DICT_TYPE,
@@ -923,35 +953,23 @@ def initialize_linked_peaks_tests(
         msg = "Non-existent linked PeaksSet key"
         raise KeyError(msg)
 
-    if skip_tests is None:
-        skip_tests = []
-
-    if (cutoff is None) or (isinstance(cutoff, str) and cutoff == "tolerant"):
-        cutoff = {}
-        cutoff["fraction_emg_breaths"] = 0.1
-        cutoff["delta_min"] = -0.5
-        cutoff["delta_max"] = 2.0
-    elif isinstance(cutoff, str) and cutoff == "strict":
-        cutoff = {}
-        cutoff["fraction_emg_breaths"] = 0.5
-        cutoff["delta_min"] = -0.5
-        cutoff["delta_max"] = 2.0
-    elif isinstance(cutoff, dict):
-        tests = ["fraction_emg_breaths", "event_timing"]
-        tests_crit = {}
-        tests_crit["fraction_emg_breaths"] = ["fraction_emg_breaths"]
-        tests_crit["event_timing"] = ["delta_min", "delta_max"]
-
-        for _, test in enumerate(tests):
-            if test not in skip_tests:
-                for crit in tests_crit[test]:
-                    if crit not in cutoff:
-                        raise KeyError(
-                            "No cut-off value provided for: " + test
-                        )
-
-    if parameter_names is None:
-        parameter_names = {}
+    skip_tests = skip_tests if skip_tests is not None else []
+    cutoff = cutoff if cutoff is not None else "tolerant"
+    parameter_names = parameter_names if parameter_names is not None else {}
+    match cutoff:
+        case "tolerant" | "strict":
+            cutoff = {
+                "fraction_emg_breaths": 0.1 if cutoff == "tolerant" else 0.5,
+                "delta_min": -0.5,
+                "delta_max": 2.0,
+            }
+        case dict(cutoff):
+            for test, crits in TESTS_LINKED.items():
+                for crit in crits:
+                    _check_cutoff_and_skips((test, crit), cutoff, skip_tests)
+        case _:
+            msg_0 = "Invalid cut-off value provided."
+            raise ValueError(msg_0)
 
     for parameter in ["ventilator_breaths", "rr"]:
         if parameter not in parameter_names:
@@ -961,9 +979,7 @@ def initialize_linked_peaks_tests(
     quality_values_df = pd.DataFrame(
         data=peak_set.peak_df["peak_idx"], columns=pd.Index(["peak_idx"])
     )
-    quality_outcomes_df = pd.DataFrame(
-        data=peak_set.peak_df["peak_idx"], columns=pd.Index(["peak_idx"])
-    )
+    quality_outcomes_df = quality_values_df.copy()
     return (
         skip_tests,
         cutoff,
@@ -1087,7 +1103,7 @@ def test_event_timing(
 def test_emg_quality(
     timeseries: TimeSeries,
     peak_set_name: str,
-    cutoff: CUTOFF_DICT_TYPE | CUTOFF_OPTIONS_TYPE | None = None,
+    cutoff: CUTOFF_TYPES = "tolerant",
     skip_tests: list[str] | None = None,
     parameter_names: PARAMETER_NAMES_TYPE | None = None,
     verbose: bool = True,
@@ -1134,7 +1150,7 @@ def test_emg_quality(
         quality_outcomes_df,
     ) = output
 
-    if "interpeak_dist" not in skip_tests:
+    if "interpeak_distance" not in skip_tests:
         quality_outcomes_df = test_interpeak_distance(
             timeseries,
             peak_set,
@@ -1194,7 +1210,7 @@ def test_emg_quality(
 def test_pocc_quality(
     timeseries: TimeSeries,
     peak_set_name: str,
-    cutoff: CUTOFF_DICT_TYPE | CUTOFF_OPTIONS_TYPE | None = None,
+    cutoff: CUTOFF_TYPES = "tolerant",
     skip_tests: list[str] | None = None,
     parameter_names: PARAMETER_NAMES_TYPE | None = None,
     verbose: bool = True,
@@ -1269,7 +1285,7 @@ def test_linked_peak_sets(
     linked_timeseries: TimeSeries,
     linked_peak_set_name: str,
     parameter_names: PARAMETER_NAMES_TYPE | None = None,
-    cutoff: CUTOFF_DICT_TYPE | CUTOFF_OPTIONS_TYPE | None = None,
+    cutoff: CUTOFF_TYPES = "tolerant",
     skip_tests: list[str] | None = None,
     verbose: bool = True,
 ) -> None:

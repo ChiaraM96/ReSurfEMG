@@ -6,7 +6,6 @@ This file contains functions to perform default signal processing procedures.
 
 import matplotlib.pyplot as plt
 
-import resurfemg.helper_functions.visualization as vis
 import resurfemg.preprocessing.ecg_removal as ecg_rm
 import resurfemg.preprocessing.envelope as evl
 import resurfemg.preprocessing.filtering as filt
@@ -59,6 +58,8 @@ def quick_look(
         axis_t.grid(True)
         plt.show()
     if plot_power_spectrum:
+        import resurfemg.helper_functions.visualization as vis
+
         _, axis_f = plt.subplots()
         vis.show_power_spectrum(emg_raw, fs_emg, t_emg[-1], signal_unit="uV")
         axis_f.grid(True)
