@@ -5,8 +5,9 @@ This file contains functions for math operations to support the functions in
 ReSurfEMG
 """  # noqa: D205
 
-import os
+import contextlib
 from collections.abc import Generator
+from pathlib import Path
 from typing import Any, NamedTuple
 
 import numpy as np
@@ -101,18 +102,11 @@ def zero_one_for_jumps_base(array: np.ndarray, cut_off: float) -> list:
 
     Returns
     -------
-    array_list: list
-        array_list: Binarized list that can be turned into array
+    list
+        A list of 0s and 1s representing the binarized array.
 
     """
-    array_list = []
-    for i in array:
-        if i < cut_off:  # noqa: SIM108
-            j = 0
-        else:
-            j = 1
-        array_list.append(j)
-    return array_list
+    return [int(i >= cut_off) for i in array]
 
 
 def slices_slider(
@@ -171,8 +165,8 @@ def slices_jump_slider(
         Actually yields, no return
 
     """
-    for i in range(len(array_sample) - (slice_len)):
-        yield array_sample[(jump * i) : ((jump * i) + slice_len)]
+    for start in range(0, len(array_sample) - slice_len + 1, jump):
+        yield array_sample[start : start + slice_len]
 
 
 def ranges_of(array: np.ndarray) -> tuple:
@@ -240,6 +234,8 @@ def intersections(left: list, right: list) -> list:
             j += 1
         elif lelt.precedes(relt):
             i += 1
+        else:  # relt ends exactly where lelt starts
+            j += 1
     return result
 
 
@@ -409,13 +405,10 @@ def save_preprocessed(array: np.ndarray, out_fname: str, force: bool) -> None:
         None
 
     """
-    if not force:  # noqa: SIM102
-        if os.path.isfile(out_fname):  # noqa: PTH113
-            return
-    try:  # noqa: SIM105
-        os.makedirs(os.path.dirname(out_fname))  # noqa: PTH103, PTH120
-    except FileExistsError:
-        pass
+    if not force and Path(out_fname).is_file():
+        return
+    with contextlib.suppress(FileExistsError):
+        Path(out_fname).parent.mkdir(parents=True, exist_ok=True)
     np.save(out_fname, array, allow_pickle=False)
 
 
