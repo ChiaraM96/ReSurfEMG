@@ -10,6 +10,46 @@ from scipy.fft import fft, fftfreq
 from scipy.signal import periodogram, welch
 
 
+def _validate_axis_spec(axis_spec: int) -> bool:
+    """Validate the axis_spec parameter.
+
+    Parameters
+    ----------
+    axis_spec : int
+        The axis specification value to validate.
+
+    Returns
+    -------
+    bool
+        True if the axis_spec is valid, False otherwise.
+    """
+    if axis_spec not in (0, 1):
+        msg = (
+            "Invalid axis_spec value. Please use 1 "
+            "for logarithmic axis or 0 for linear axis."
+        )
+        raise ValueError(msg)
+    return axis_spec == 1
+
+
+def _plot_psd(
+    frequencies: np.ndarray,
+    psd_values: np.ndarray,
+    use_semilog: int,
+    title: str,
+    signal_unit: str,
+) -> None:
+    """Plot the power spectral density (PSD) values."""
+    if _validate_axis_spec(use_semilog):
+        plt.semilogy(frequencies, psd_values)
+    else:
+        plt.plot(frequencies, psd_values)
+    plt.xlabel("Frequency [Hz]")
+    plt.ylabel(f"PSD [{signal_unit}**2/Hz]")
+    plt.title(title)
+    plt.show()
+
+
 def show_power_spectrum(
     signal: np.ndarray,
     fs_emg: int,
@@ -54,23 +94,8 @@ def show_power_spectrum(
     x_f = fftfreq(n_samples, 1 / fs_emg)
 
     idx = [i for i, v in enumerate(x_f) if 0 <= v <= t_window_s]
-    psd_label = f"PSD [{signal_unit}**2/Hz]"
 
-    if axis_spec == 1:
-        plt.semilogy(x_f[idx], y_f[idx])
-    elif axis_spec == 0:
-        plt.plot(x_f[idx], y_f[idx])
-    else:
-        msg = (
-            "Invalid axis_spec value. Please use 1 "
-            "for logarithmic axis or 0 for linear axis."
-        )
-        raise ValueError(msg)
-
-    plt.xlabel("Frequency [Hz]")
-    plt.ylabel(psd_label)
-    plt.title("Power Spectral Density")
-    plt.show()
+    _plot_psd(x_f[idx], y_f[idx], axis_spec, "Power Spectrum", signal_unit)
 
     return y_f, x_f
 
@@ -118,23 +143,8 @@ def show_psd_welch(
 
     window = np.hanning(t_window_s)
     f, pxx_den = welch(signal, fs_emg, window=window, nperseg=t_window_s)
-    psd_label = f"PSD [{signal_unit}**2/Hz]"
 
-    if axis_spec == 1:
-        plt.semilogy(f, pxx_den)
-    elif axis_spec == 0:
-        plt.plot(f, pxx_den)
-    else:
-        msg = (
-            "Invalid axis_spec value. Please use 1 "
-            "for logarithmic axis or 0 for linear axis."
-        )
-        raise ValueError(msg)
-
-    plt.xlabel("Frequency [Hz]")
-    plt.ylabel(psd_label)
-    plt.title("Power Spectral Density")
-    plt.show()
+    _plot_psd(f, pxx_den, axis_spec, "Power Spectral Density", signal_unit)
 
     return f, pxx_den
 
@@ -174,21 +184,7 @@ def show_periodogram(
         If the axis_spec value is invalid.
     """
     f, Pxx_den = periodogram(signal, fs_emg)  # noqa: N806
-    psd_label = f"PSD [{signal_unit}**2/Hz]"
 
-    if axis_spec == 1:
-        plt.semilogy(f, Pxx_den)
-    elif axis_spec == 0:
-        plt.plot(f, Pxx_den)
-    else:
-        msg = (
-            "Invalid axis_spec value. Please use 1 for "
-            "logarithmic axis or 0 for linear axis."
-        )
-        raise ValueError(msg)
-    plt.xlabel("Frequency [Hz]")
-    plt.ylabel(psd_label)
-    plt.title("Periodogram")
-    plt.show()
+    _plot_psd(f, Pxx_den, axis_spec, "Periodogram", signal_unit)
 
     return f, Pxx_den
