@@ -2414,7 +2414,9 @@ class VentilatorDataGroup(TimeSeriesGroup):
             threshold_new=kwargs.get("threshold_new"),
             prominence_new=kwargs.get("prominence_new"),
         )
-
+        # detect_ventilator_breath returns indices relative to start_idx;
+        # convert them to indices in the full signal.
+        peak_idxs = np.asarray(peak_idxs) + kwargs["start_idx"]
         # Store peaks in the same signal
         for _channel_key in channel_keys_o:
             self.channels[_channel_key].set_peaks(
