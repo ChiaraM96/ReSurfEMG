@@ -194,7 +194,8 @@ class TimeSeries:
                 key (str): One of "raw", "filt", "clean", "env", "env_ci",
                     "baseline", or a custom signal type.
 
-        Returns:
+        Returns
+        -------
                 numpy.ndarray or tuple: Data of the selected signal type. May be a
                     numpy array or a tuple of two arrays for confidence interval
                     data (lower, upper).
@@ -222,7 +223,8 @@ class TimeSeries:
     def __iter__(self):
         """Iterate over the signal data types in the _y_data dictionary.
 
-        Returns:
+        Returns
+        -------
             iterator: Iterator over the signal data types.
         """
         return iter(self._y_data)
@@ -248,7 +250,8 @@ class TimeSeries:
                 signal_type (str, optional): One of "env", "clean", "filt", or
                     "raw".
 
-        Returns:
+        Returns
+        -------
                 numpy.ndarray: Data of the selected signal type.
         """
         # Use direct dict access for the raw signal since `self.__getitem__`
@@ -1220,11 +1223,12 @@ class TimeSeries:
             colors, "tab:red"
         )
         peak_marker, start_marker, end_marker = get_color_marker(markers, "*")
+        if axes is None:
+            _, axes = plt.subplots()
         axes_arr = np.atleast_1d(cast("Any", axes))
         if len(axes_arr) == 1 and len(x_vals_peak) > 1:
-            axes = np.matlib.repmat(
-                cast("Any", axes), len(x_vals_peak), 1
-            ).flatten()
+            # Plot all markers in the single provided axis
+            axes_arr = np.repeat(axes_arr, len(x_vals_peak))
         for axis, x_peak, y_peak, x_start, y_start, x_end, y_end in zip(
             axes_arr,
             x_vals_peak,
@@ -1666,10 +1670,12 @@ class TimeSeriesGroup:
                 is also None, all channels are selected.
             default: Channel keys to fall back to when ``channels`` is None.
 
-        Returns:
+        Returns
+        -------
             list: Validated channel keys.
 
-        Raises:
+        Raises
+        ------
             ValueError: If ``channels`` has an unsupported type or contains a
                 key that is not a valid channel.
         """
@@ -1917,7 +1923,8 @@ class TimeSeriesGroup:
                 signal_io (tuple, optional): Tuple where the first element is the
                     input signal type. Default is (None,).
 
-        Returns:
+        Returns
+        -------
                 numpy.ndarray: 2D array of shape (n_channels, n_samples).
         """
         if channel_idxs is None:
@@ -2360,7 +2367,8 @@ class VentilatorDataGroup(TimeSeriesGroup):
             **kwargs: Additional keyword arguments passed to the peak detection
                 function.
 
-        Returns:
+        Returns
+        -------
             None
         """
         channel_key_i = (
