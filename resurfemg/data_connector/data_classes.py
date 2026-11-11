@@ -808,6 +808,7 @@ class TimeSeries:
         end_idx: int | None = None,
         overwrite: bool = True,
         signal_io: tuple[tuple[str | None, str], ...] = (("env", "baseline"),),
+        min_peak_distance_s: int | None = None,
     ) -> None:
         """Find breath peaks in provided EMG envelope signal.
 
@@ -832,6 +833,8 @@ class TimeSeries:
                     False.
                 signal_io (tuple, optional): Tuple of (input_signal_key,
                     baseline_key). Default is (("env", "baseline"),).
+                min_peak_distance_s (int, optional): Minimum peak distance in
+                    samples.
         """
         if signal_io[0][0] not in self._y_data:
             msg = f"Envelope ({signal_io[0][0]}) not yet defined."
@@ -865,6 +868,9 @@ class TimeSeries:
             raise ValueError(msg)
 
         min_peak_width_s = min_peak_width_s or self.param["fs"] // 5
+        min_peak_distance_s = min_peak_distance_s or int(
+            self.param["fs"] * 40 / 60
+        )
 
         peak_idxs = evt.detect_emg_breaths(
             signal[start_idx:end_idx],
@@ -2056,6 +2062,7 @@ class EmgDataGroup(TimeSeriesGroup):
         "get_ecg_peaks",
         "gating",
         "wavelet_denoising",
+        "detect_emg_breaths",
     ]
 
     def __init__(
@@ -2139,6 +2146,23 @@ class EmgDataGroup(TimeSeriesGroup):
             **kwargs,
         ) -> None:
             """Remove ECG artefacts from the indicated channels with wavelets."""
+
+        ...
+
+        def detect_emg_breaths(
+            self,
+            threshold: int = 0,
+            prominence_factor: float = 0.5,
+            min_peak_width_s: int | None = None,
+            peak_set_name: str = "breaths",
+            start_idx: int = 0,
+            end_idx: int | None = None,
+            overwrite: bool = True,
+            signal_io: tuple[tuple[str | None, str], ...] = (
+                ("env", "baseline"),
+            ),
+        ) -> None:
+            """Detect EMG breaths in the indicated channels."""
 
         ...
 

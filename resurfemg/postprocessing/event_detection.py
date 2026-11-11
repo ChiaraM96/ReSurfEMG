@@ -367,6 +367,7 @@ def detect_emg_breaths(
     threshold=0,
     prominence_factor=0.5,
     min_peak_width_s=1,
+    min_peak_distance_s=1,
 ):
     """Identify the electrophysiological breaths from the EMG envelope and return
     an array breath peak indices. Input of baseline threshold, peak prominence
@@ -384,6 +385,8 @@ def detect_emg_breaths(
     :type prominence_factor: ~float
     :param min_peak_width_s: required width of peak in samples
     :type min_peak_width_s: ~int
+    :param min_peak_distance_s: required minimum distance between peaks in samples
+    :type min_peak_distance_s: ~int
 
     :returns peak_idxs: list of EMG breath peak indices
     :rtype peak_idxs: list[int]
@@ -401,6 +404,7 @@ def detect_emg_breaths(
         height=threshold,
         prominence=prominence,
         width=min_peak_width_s,
+        distance=min_peak_distance_s,
     )
 
     return peak_idxs
