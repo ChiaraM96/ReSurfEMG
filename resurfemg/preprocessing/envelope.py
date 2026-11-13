@@ -2,90 +2,119 @@
 Licensed under the Apache License, version 2.0. See LICENSE for details.
 
 This file contains functions extract the envelopes from EMG arrays.
-"""
+"""  # noqa: D205
 
 import numpy as np
 import pandas as pd
 from scipy import stats
 
 
-def full_rolling_rms(emg_clean, window_length):
-    """This function computes a root mean squared envelope over an
-    array cleaned (filtered and ECG eliminated) EMG.
-    ---------------------------------------------------------------------------
-    :param emg_clean: Samples from the EMG
-    :type emg_clean: ~numpy.ndarray
-    :param window_length: Length of the sample use as window for function
-    :type window_length: int
+def full_rolling_rms(emg_clean: np.ndarray, window_length: int) -> np.ndarray:
+    """Compute the root mean squared envelope of an EMG signal.
 
-    :returns emg_rms: The root-mean-squared EMG sample data
-    :rtype emg_rms: ~numpy.ndarray[float]
+    This function computes a root mean squared envelope over an
+    array cleaned (filtered and ECG eliminated) EMG. The envelope is calculated
+    using a full rolling window approach.
+
+    Parameters
+    ----------
+    emg_clean : numpy.ndarray
+        Filtered and cleaned EMG signal, with ECG removed.
+    window_length : int
+        Rolling window length for the RMS calculation, in samples.
+
+    Returns
+    -------
+    emg_rms: ~numpy.ndarray[float]
+        emg_rms: The root-mean-squared envelope of the EMG signal.
+
     """
     emg_clean_sqr = pd.Series(np.power(emg_clean, 2))
-    emg_rms = np.sqrt(
+    return np.sqrt(
         emg_clean_sqr.rolling(
             window=window_length, min_periods=1, center=True
         ).mean()
     ).values
 
-    return emg_rms
 
+def naive_rolling_rms(emg_clean: np.ndarray, window_length: int) -> np.ndarray:
+    """Compute the RMS envelope of an EMG signal using a naive approach.
 
-def naive_rolling_rms(emg_clean, window_length):
-    """This function computes a root mean squared envelope over an
+    This function computes a root mean squared envelope over an
     array `emg_clean`.
-    ---------------------------------------------------------------------------
-    :param emg_clean: Samples from the EMG
-    :type emg_clean: ~numpy.ndarray
-    :param window_length: Length of the sample use as window for function
-    :type window_length: int
 
-    :returns emg_rms: : The root-mean-squared EMG sample data
-    :rtype emg_rms: ~numpy.ndarray[float]
+    The envelope is calculated using a naive approach, which is faster than the
+    full rolling window approach, but may be less accurate.
+
+    Parameters
+    ----------
+    emg_clean : numpy.ndarray
+        Filtered and cleaned EMG signal, with ECG removed.
+    window_length : int
+        Window length for the RMS calculation, in samples.
+
+    Returns
+    -------
+    emg_rms: ~numpy.ndarray[float]
+        emg_rms: : The root-mean-squared envelope of the EMG signal.
+
     """
     x_c = np.cumsum(abs(emg_clean) ** 2)
-    emg_rms = np.sqrt(
+    return np.sqrt(
         (x_c[window_length:] - x_c[:-window_length]) / window_length
     )
-    return emg_rms
 
 
-def full_rolling_arv(emg_clean, window_length):
-    """This function computes an average rectified value envelope over an
+def full_rolling_arv(emg_clean: np.ndarray, window_length: int) -> np.ndarray:
+    """Compute the average rectified value envelope of an EMG signal.
+
+    This function computes an average rectified value envelope over an
     array `emg_clean`.
-    ---------------------------------------------------------------------------
-    :param emg_clean: Samples from the EMG
-    :type emg_clean: ~numpy.ndarray
-    :param window_length: Length of the sample use as window for function
-    :type window_length: int
 
-    :returns emg_arv: The average rectified value EMG sample data
-    :rtype emg_arv: ~numpy.ndarray[float]
+    The envelope is calculated using a full rolling window approach.
+
+    Parameters
+    ----------
+    emg_clean : numpy.ndarray
+        The EMG signal, filtered and cleaned, with ECG removed.
+    window_length : int
+        Rolling window length for the ARV calculation, in samples.
+
+    Returns
+    -------
+    emg_arv: ~numpy.ndarray[float]
+        emg_arv: The average rectified value envelope of the EMG signal.
+
     """
     emg_clean_abs = pd.Series(np.abs(emg_clean))
-    emg_arv = (
+    return (
         emg_clean_abs.rolling(window=window_length, min_periods=1, center=True)
         .mean()
         .values
     )
 
-    return emg_arv
 
+def rolling_rms_ci(
+    emg_clean: np.ndarray, window_length: int, alpha: float = 0.05
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute the confidence interval for the RMS envelope of an EMG signal.
 
-def rolling_rms_ci(emg_clean, window_length, alpha=0.05):
-    """This function estimates the confidence interval for each window of the RMS.
-    ---------------------------------------------------------------------------
-    :param emg_clean: Samples from the EMG
-    :type emg_clean: ~numpy.ndarray[float]
-    :param window_length: Length of the sample used as window for function
-    :type window_length: int
-    :param alpha: Significance level for the confidence interval
-    :type alpha: float
+    This function estimates the confidence interval for each window of the RMS.
 
-    :returns lower_ci: Lower bound of the confidence interval
-    :rtype lower_ci: ~numpy.ndarray[float]
-    :returns upper_ci: Upper bound of the confidence interval
-    :rtype upper_ci: ~numpy.ndarray[float]
+    Parameters
+    ----------
+    emg_clean : numpy.ndarray[float]
+        EMG signal, filtered and cleaned, with ECG removed.
+    window_length : int
+        Window length for the RMS calculation, in samples.
+    alpha : float, default=0.05
+        Significance level for the confidence interval.
+
+    Returns
+    -------
+    tuple[numpy.ndarray[float], numpy.ndarray[float]]
+        The lower and upper bounds of the confidence interval.
+
     """
     emg_clean_sqr = pd.Series(np.power(emg_clean, 2))
     emg_ms = (
@@ -109,20 +138,26 @@ def rolling_rms_ci(emg_clean, window_length, alpha=0.05):
     return lower_ci, upper_ci
 
 
-def rolling_arv_ci(emg_clean, window_length, alpha=0.05):
-    """This function estimates the confidence interval for each window.
-    ---------------------------------------------------------------------------
-    :param emg_clean: Samples from the EMG
-    :type emg_clean: ~numpy.ndarray[float]
-    :param window_length: Length of the sample used as window for function
-    :type window_length: int
-    :param alpha: Significance level for the confidence interval
-    :type alpha: float
+def rolling_arv_ci(
+    emg_clean: np.ndarray, window_length: int, alpha: float = 0.05
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute the confidence interval for the ARV envelope of an EMG signal.
 
-    :returns lower_ci: Lower bound of the confidence interval
-    :rtype lower_ci: ~numpy.ndarray[float]
-    :returns upper_ci: Upper bound of the confidence interval
-    :rtype upper_ci: ~numpy.ndarray[float]
+    This function estimates the confidence interval for each window.
+
+    Parameters
+    ----------
+    emg_clean : numpy.ndarray[float]
+        EMG signal, filtered and cleaned, with ECG removed.
+    window_length : int
+        Window length for the RMS calculation, in samples.
+    alpha : float, default=0.05
+        Significance level for the confidence interval.
+
+    Returns
+    -------
+    tuple[numpy.ndarray[float], numpy.ndarray[float]]
+        The lower and upper bounds of the confidence interval.
     """
     emg_clean_abs = pd.Series(np.abs(emg_clean))
     emg_arv = (

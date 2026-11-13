@@ -2,34 +2,41 @@
 Licensed under the Apache License, version 2.0. See LICENSE for details.
 
 This file contains functions to filter EMG arrays.
-"""
+"""  # noqa: D205
 
 import numpy as np
 from scipy import signal
 
 
 def emg_bandpass_butter(
-    emg_raw,
-    high_pass,
-    low_pass,
-    fs_emg,
-    order=3,
-):
+    emg_raw: np.ndarray,
+    high_pass: float,
+    low_pass: float,
+    fs_emg: int,
+    order: int = 3,
+) -> np.ndarray:
     """Bandpass filter for EMG signal.
-    ---------------------------------------------------------------------------
-    :param emg_raw: The raw EMG signal
-    :type emg_raw: ~numpy.ndarray
-    :param high_pass: High pass cut-off frequency `frequenceisabove`
-    :type high_pass: ~float
-    :param low_pass: Low pass cut-off frequency `frequenciesbelow`
-    :type low_pass: ~float
-    :param fs_emg: Sampling frequency
-    :type fs_emg: int
-    :param order: The filter order
-    :type order: int
 
-    :returns emg_filt: The bandpass filtered EMG data
-    :rtype emg_filt: ~numpy.ndarray
+    Bandpass filter for EMG signal using a Butterworth filter.
+
+    Parameters
+    ----------
+    emg_raw : numpy.ndarray
+        The raw EMG signal
+    high_pass : float
+        High pass cut-off frequency `frequenceisabove`
+    low_pass : float
+        Low pass cut-off frequency `frequenciesbelow`
+    fs_emg : int
+        Sampling frequency of the EMG signal
+    order : int, default=3
+        The order of the Butterworth filter.
+
+    Returns
+    -------
+    numpy.ndarray
+        The bandpass filtered EMG data
+
     """
     sos = signal.butter(
         order,
@@ -39,29 +46,33 @@ def emg_bandpass_butter(
         output="sos",
     )
     # sos (output parameter)is second order section  -> "stabilizes" ?
-    emg_filt = signal.sosfiltfilt(sos, emg_raw)
-    return emg_filt
+    return signal.sosfiltfilt(sos, emg_raw)
 
 
 def emg_lowpass_butter(
-    emg_raw,
-    low_pass,
-    fs_emg,
-    order=3,
-):
+    emg_raw: np.ndarray,
+    low_pass: float,
+    fs_emg: int,
+    order: int = 3,
+) -> np.ndarray:
     """Lowpass filter for EMG signal.
-    ---------------------------------------------------------------------------
-    :param emg_raw: The raw EMG signal
-    :type emg_raw: ~numpy.ndarray
-    :param low_pass: Low pass cut-off frequency `frequenciesbelow`
-    :type low_pass: ~float
-    :param fs_emg: Sampling frequency
-    :type fs_emg: int
-    :param order: The filter order
-    :type order: int
 
-    :returns emg_filt: The lowpass filtered EMG data
-    :rtype: ~numpy.ndarray
+    Parameters
+    ----------
+    emg_raw : numpy.ndarray
+        The raw EMG signal
+    low_pass : float
+        Low pass cut-off frequency `frequenciesbelow`
+    fs_emg : int
+        Sampling frequency of the EMG signal
+    order : int, default=3
+        The order of the Butterworth filter.
+
+    Returns
+    -------
+    numpy.ndarray
+        The lowpass filtered EMG data
+
     """
     sos = signal.butter(
         order,
@@ -70,29 +81,33 @@ def emg_lowpass_butter(
         fs=fs_emg,
         output="sos",
     )
-    emg_filt = signal.sosfiltfilt(sos, emg_raw)
-    return emg_filt
+    return signal.sosfiltfilt(sos, emg_raw)
 
 
 def emg_highpass_butter(
-    emg_raw,
-    high_pass,
-    fs_emg,
-    order=3,
-):
+    emg_raw: np.ndarray,
+    high_pass: float,
+    fs_emg: int,
+    order: int = 3,
+) -> np.ndarray:
     """Highpass filter for EMG signal.
-    ---------------------------------------------------------------------------
-    :param emg_raw: The raw EMG signal
-    :type emg_raw: ~numpy.ndarray
-    :param high_pass: High pass cut-off frequency `frequenceisabove`
-    :type high_pass: ~float
-    :param fs_emg: Sampling frequency
-    :type fs_emg: int
-    :param order: The filter order
-    :type order: int
 
-    :returns emg_filt: The highpass filtered EMG data
-    :rtype emg_filt: ~numpy.ndarray
+    Parameters
+    ----------
+    emg_raw : numpy.ndarray
+        The raw EMG signal
+    high_pass : float
+        High pass cut-off frequency `frequenceisabove`
+    fs_emg : int
+        Sampling frequency of the EMG signal
+    order : int, default=3
+        The order of the Butterworth filter.
+
+    Returns
+    -------
+    numpy.ndarray
+        The highpass filtered EMG data
+
     """
     sos = signal.butter(
         order,
@@ -101,57 +116,68 @@ def emg_highpass_butter(
         fs=fs_emg,
         output="sos",
     )
-    emg_filt = signal.sosfiltfilt(sos, emg_raw)
-    return emg_filt
+    return signal.sosfiltfilt(sos, emg_raw)
 
 
-def notch_filter(emg_raw, f_notch, fs_emg, q):
+def notch_filter(
+    emg_raw: np.ndarray, f_notch: float, fs_emg: int, q: float
+) -> np.ndarray:
     """Filter to take out a specific frequency band.
-    ---------------------------------------------------------------------------
-    :param emg_raw: Percentage variation tolerance to allow without cutting
-    :type emg_raw: int
-    :param f_notch: The frequency to remove from the signal
-    :type f_notch: float
-    :param fs_emg: Sampling frequency
-    :type fs_emg: int
-    :param q: quality factor of notch filter, Q = f_notch/band_width of band-
-        stop, see scipy.signal.iirnotch
-    :type q: float
 
-    :returns emg_filt: The notch filtered EMG data
-    :rtype emg_filt: ~numpy.ndarray
+    Parameters
+    ----------
+    emg_raw : numpy.ndarray
+        EMG signal to be filtered
+    f_notch : float
+        The frequency to remove from the signal
+    fs_emg : int
+        Sampling frequency of the EMG signal
+    q : float
+        quality factor of notch filter, Q = f_notch/band_width of band-
+        stop, see scipy.signal.iirnotch
+
+    Returns
+    -------
+    numpy.ndarray
+        The notch filtered EMG data
+
     """
     b_notch, a_notch = signal.iirnotch(f_notch, q, fs_emg)
 
-    output_signal = signal.filtfilt(b_notch, a_notch, emg_raw)
-    return output_signal
+    return signal.filtfilt(b_notch, a_notch, emg_raw)
 
 
 def compute_power_loss(
-    signal_original,
-    fs_original,
-    signal_processed,
-    fs_processed,
-    n_segment=None,
-    percent_overlap=25,
-):
+    signal_original: np.ndarray,
+    fs_original: int,
+    signal_processed: np.ndarray,
+    fs_processed: int,
+    n_segment: int | None = None,
+    percent_overlap: float = 25,
+) -> float:
     """Compute the percentage of power loss after the processing.
-    ---------------------------------------------------------------------------
-    :param signal_original: Original signal
-    :type  signal_original: ~numpy.ndarray
-    :param fs_original: Sampling frequency of orginal signal
-    :type original_signal_sampling_frequency: int
-    :param signal_processed: Array.
-    :type  signal_processed: ~numpy.ndarray
-    :param fs_processed: Sampling frequency of orginal signal
-    :type fs_processed: int
-    :param n_segment: Pwelch window width
-    :type n_segment: int
-    :param percent_overlap: Pwelch window overlap percentage
-    :type percent_overlap: float
 
-    :returns power_loss: Percentage of power loss
-    :rtype power_loss: float
+    Parameters
+    ----------
+    signal_original : numpy.ndarray
+        Original signal before processing
+    fs_original : int
+        Sampling frequency of the original signal
+    signal_processed : numpy.ndarray
+        Processed signal
+    fs_processed : int
+        Sampling frequency of the processed signal
+    n_segment : int, optional
+        Pwelch window width. If None, it will be set to half of the original
+        signal's sampling frequency.
+    percent_overlap : float, default=25
+        Pwelch window overlap percentage.
+
+    Returns
+    -------
+    float
+        Percentage of power loss
+
     """
     if n_segment is None:
         n_segment = fs_original // 2
@@ -173,6 +199,4 @@ def compute_power_loss(
         noverlap=noverlap,
     )
     # compute the percentage of power loss
-    power_loss = 100 * (1 - (np.sum(pxx_den_orig) / np.sum(pxx_den_processed)))
-
-    return power_loss
+    return 100 * (1 - (np.sum(pxx_den_orig) / np.sum(pxx_den_processed)))
